@@ -1,10 +1,58 @@
-# 🧭 ContextEngine do zero: guia completo para iniciantes
+<div align="center">
+
+# Ω ContextEngine
+
+### Do primeiro documento à primeira resposta RAG
+
+**Um guia visual, completo e amigável para quem está começando**
+
+[![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)](https://www.php.net/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![Providers](https://img.shields.io/badge/providers-pluggable-8B5CF6)](#-10-escolhendo-providers)
+[![License MIT](https://img.shields.io/badge/license-MIT-22C55E)](../LICENSE)
+
+```text
+DOCUMENTOS  →  CONHECIMENTO PESQUISÁVEL  →  PERGUNTA  →  RESPOSTA COM FONTES
+```
+
+</div>
 
 Este guia ensina a construir um sistema que lê uma política de reembolso, prepara seu conteúdo para pesquisa e responde perguntas usando os trechos encontrados. Tudo foi conferido contra o código atual.
 
+> [!IMPORTANT]
 > **Estado atual:** biblioteca funcional em estágio inicial de produção. Ela fornece o motor de ingestão e RAG; sua aplicação fornece banco, credenciais, configuração e interface.
 
-## 1. O que é o ContextEngine
+---
+
+## 🗺️ Escolha sua jornada
+
+| | Jornada | Você aprenderá |
+|---:|---|---|
+| **01** | [Entender](#-1-o-que-é-o-contextengine) | O problema, os conceitos e o vocabulário essencial |
+| **02** | [Preparar](#-4-antes-de-começar) | PHP, Composer, PostgreSQL, pgvector e providers |
+| **03** | [Construir](#-11-configurando-as-dependências) | Como conectar cada componente da biblioteca |
+| **04** | [Ingerir](#-13-documento-de-exemplo) | Como transformar um arquivo em conhecimento pesquisável |
+| **05** | [Perguntar](#-18-fazendo-uma-pergunta) | Retrieval, resposta e fontes utilizadas |
+| **06** | [Operar](#-21-utilizando-cache) | Cache, atualizações, erros e diagnóstico |
+| **07** | [Executar](#-26-exemplo-completo-final) | Um exemplo completo, copiável e executável |
+
+### O resultado final
+
+```text
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│ política.txt     │ →  │ PostgreSQL       │ →  │ “Qual é o prazo?”│
+│ seus documentos │    │ + pgvector       │    │                  │
+└──────────────────┘    └──────────────────┘    └────────┬─────────┘
+                                                        ↓
+                                               ┌──────────────────┐
+                                               │ Resposta         │
+                                               │ + fontes usadas  │
+                                               └──────────────────┘
+```
+
+---
+
+## 🌱 1. O que é o ContextEngine
 
 Imagine uma empresa com manuais, regulamentos e procedimentos. Um funcionário pergunta “Em quanto tempo devo solicitar um reembolso?” e quer uma resposta baseada nesses arquivos.
 
@@ -16,7 +64,7 @@ Ele é uma **biblioteca PHP**, não uma aplicação pronta. Não possui tela, AP
 O ContextEngine é o motor. Sua aplicação é o carro completo.
 ```
 
-## 2. O problema resolvido
+## 🎯 2. O problema resolvido
 
 Se uma empresa possui 500 documentos, enviar todos à IA em cada pergunta seria lento, caro e poderia ultrapassar o limite do modelo. O ContextEngine prepara um índice inteligente:
 
@@ -28,7 +76,7 @@ Pergunta → transformação em números → procura por significado
 
 Os nomes técnicos são **ingestão**, **chunking**, **embeddings**, **busca vetorial**, **retrieval** e **RAG**.
 
-## 3. Glossário para iniciantes
+## 📚 3. Glossário para iniciantes
 
 ### RAG
 
@@ -67,11 +115,11 @@ O **modelo de embedding** transforma texto em números. O **espaço vetorial** �
 
 `EmbeddingSpace` registra provider, model, dimensions, revision e parameters. Seu `fingerprint` é uma etiqueta determinística dessa configuração. Ele aparece na geração, cache, banco e busca para impedir mistura incompatível.
 
-### Provider, OpenAI e Ollama
+### Provider, OpenAI, Ollama e Gemini
 
-Um **provider** adapta a biblioteca a um serviço. OpenAI normalmente exige internet e API key. Ollama permite executar modelos localmente, conforme a máquina e o modelo instalado.
+Um **provider** adapta a biblioteca a um serviço. OpenAI e Google Gemini são serviços externos normalmente acessados com credenciais; Ollama permite executar modelos localmente, conforme a máquina e o modelo instalado.
 
-O pacote oferece embeddings OpenAI/Ollama e respostas completas OpenAI. Não oferece atualmente um `OllamaLanguageModel`.
+O pacote oferece embeddings OpenAI/Ollama e respostas completas OpenAI. Gemini é uma possibilidade arquitetural porque os contratos são independentes de fornecedor, mas o repositório ainda não inclui `GeminiEmbeddingProvider` ou `GeminiLanguageModel`. Não oferece atualmente um `OllamaLanguageModel`.
 
 ### PostgreSQL, pgvector e busca vetorial
 
@@ -96,7 +144,9 @@ Uma **pipeline** é uma linha de montagem de etapas. Um **tenant** é uma organi
 
 Fiber ajuda internamente a manter chamadas concorrentes. Future representa um resultado futuro dentro desse mecanismo. O usuário não manipula nenhum deles; `Future` não aparece na API pública.
 
-## 4. Antes de começar
+---
+
+## 🧰 4. Antes de começar
 
 ### Obrigatório
 
@@ -117,10 +167,11 @@ php -m | grep -E 'PDO|pdo_pgsql|sockets'
 
 - OpenAI: internet e chave; este guia usa `text-embedding-3-small`, 1.536 dimensões.
 - Ollama: serviço ativo, modelo instalado e dimensão conhecida.
+- Gemini ou outro serviço: implementação própria de `EmbeddingProvider`, enquanto não houver adapter oficial.
 
-Para a resposta final, a implementação incluída é `OpenAILanguageModel`. Redis, Docker, `omegaalfa/collection` e `omegaalfa/lazy-object` são opcionais.
+Para a resposta final, a implementação incluída é `OpenAILanguageModel`. Qualquer integração própria — incluindo Gemini — pode ser usada se implementar `LanguageModel`. Redis, Docker, `omegaalfa/collection` e `omegaalfa/lazy-object` são opcionais.
 
-## 5. O projeto de exemplo
+## 🏗️ 5. O projeto de exemplo
 
 Carregaremos `documents/politica-reembolso.txt` e perguntaremos “Em quanto tempo devo solicitar um reembolso?”.
 
@@ -132,7 +183,7 @@ context-engine-example/
 └── example.php
 ```
 
-## 6. Criando o projeto
+## 📁 6. Criando o projeto
 
 ```bash
 mkdir context-engine-example
@@ -142,7 +193,7 @@ mkdir documents
 
 Execute no local em que guarda projetos. O resultado é uma aplicação consumidora separada da biblioteca.
 
-## 7. Instalando a biblioteca
+## 📦 7. Instalando a biblioteca
 
 Em 29/07/2026, a busca não confirmou `omegaalfa/context-engine` no Packagist. O GitHub é público, mas o pacote e três dependências usam `dev-main`. Use esta instalação VCS, sem inventar uma versão estável:
 
@@ -173,7 +224,7 @@ composer install
 
 Espere `vendor/`, `composer.lock` e `vendor/autoload.php`. Erros de resolução geralmente indicam repositório irmão ausente.
 
-## 8. Preparando PostgreSQL
+## 🐘 8. Preparando PostgreSQL
 
 ```bash
 createdb context_engine_example
@@ -211,7 +262,7 @@ A chave composta impede duplicação da mesma versão no mesmo escopo. Texto e m
 
 > A fixture oficial usa `vector(3)` apenas nos testes. O schema acima foi adaptado ao padrão OpenAI de 1.536. Para outro modelo, ajuste ambos os números antes de criar a tabela.
 
-## 9. Opção com Docker
+## 🐳 9. Opção com Docker
 
 O compose do repositório inicia pgvector em `localhost:54329` e Redis em `localhost:63799`:
 
@@ -224,7 +275,20 @@ docker compose --env-file .env --profile integration down
 
 Docker não é obrigatório. Esse compose monta a fixture `vector(3)` e é determinístico para testes, não para o exemplo OpenAI. Uma aplicação real deve manter seu compose/schema de 1.536 dimensões. O SQL de inicialização só roda quando o volume é criado.
 
-## 10. OpenAI ou Ollama
+## 🤖 10. Escolhendo providers
+
+O restante da engine não precisa saber qual fornecedor foi escolhido. Ingestão conhece `EmbeddingProvider`; RAG conhece `LanguageModel`; streaming, quando real, conhece `StreamingLanguageModel`.
+
+```text
+                    ┌─ OpenAI
+EmbeddingProvider ──┼─ Ollama
+                    ├─ Gemini (adapter próprio)
+                    └─ qualquer implementação compatível
+
+                    ┌─ OpenAI
+LanguageModel ──────┼─ Gemini (adapter próprio)
+                    └─ qualquer implementação compatível
+```
 
 ### A — OpenAI
 
@@ -251,9 +315,31 @@ $embeddingProvider = new OllamaEmbeddingProvider(
 
 Nome e dimensão dependem do modelo instalado e não são determinados pelo pacote. Adapte o schema. Ollama cobre embeddings; para a resposta final, implemente `LanguageModel` ou use OpenAI.
 
-## 11. Configurando as dependências
+### C — Gemini ou outro provider
 
-Cada peça abaixo participa de uma etapa do fluxo. O exemplo completo reúne todas na seção 26.
+O ContextEngine não possui adapter Gemini neste momento. Não existe namespace ou construtor Gemini oficial para copiar. Uma integração deve implementar um ou mais contratos, conforme as capacidades reais:
+
+```php
+use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
+use Omegaalfa\ContextEngine\Contract\LanguageModel;
+use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
+
+function configureEngine(
+    EmbeddingProvider $embeddings,
+    LanguageModel $languageModel,
+    ?StreamingLanguageModel $streaming = null,
+): void {
+    // A aplicação compõe as pipelines com contratos, não com um fornecedor fixo.
+}
+```
+
+Para Gemini, o adapter da aplicação seria responsável por autenticação, endpoint, payload, modelo, dimensão, validação da resposta e `EmbeddingSpace`. Implemente `StreamingLanguageModel` somente se o transporte entregar deltas reais. Consulte o [guia de extensão](extension-guide.md).
+
+---
+
+## 🔌 11. Configurando as dependências
+
+Cada peça abaixo participa de uma etapa do fluxo. Os objetos concretos OpenAI servem apenas como bootstrap executável com os adapters existentes. `IngestionPipeline`, `Retriever` e `RagPipeline` recebem contratos e continuam iguais com Gemini ou qualquer outro provider compatível.
 
 ### 11.1 Cliente HTTP e event loop
 
@@ -372,7 +458,7 @@ $rag = new RagPipeline($retriever, $promptBuilder, $languageModel);
 
 O modelo retorna resposta completa e não implementa streaming incremental.
 
-## 12. `EmbeddingSpace` com calma
+## 🧭 12. `EmbeddingSpace` com calma
 
 ```php
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
@@ -391,7 +477,9 @@ Imagine que cada modelo usa um mapa. Provider identifica quem fez o mapa; model 
 
 Não inclua chave, endpoint ou timeout em `parameters`: não alteram o significado do vetor. Se `dimensions` divergir do modelo ou de `vector(n)`, a criação do `Embedding` ou o banco falhará.
 
-## 13. Documento de exemplo
+---
+
+## 📝 13. Documento de exemplo
 
 Salve em `documents/politica-reembolso.txt`:
 
@@ -407,7 +495,7 @@ Depois da aprovação do gestor, o pagamento é processado na folha seguinte. D�
 
 As linhas em branco fazem o loader produzir um `Document` por bloco não vazio.
 
-## 14. Carregando o documento
+## 🚪 14. Carregando o documento
 
 ```php
 use Omegaalfa\ContextEngine\Loader\TextFileLoader;
@@ -422,13 +510,13 @@ O loader aceita apenas caminho e tenant. Ele cria ID como SHA-256 de caminho + �
 
 > ID, collection, status e metadata personalizados exigem um `DocumentLoader` próprio que produza objetos `Document`. Não existem esses parâmetros no `TextFileLoader` atual.
 
-## 15. Dividindo o documento
+## ✂️ 15. Dividindo o documento
 
 `chunkSize: 500` limita aproximadamente o trecho a 500 caracteres. `overlap: 75` repete parte entre trechos para evitar cortar uma ideia exatamente na divisão.
 
 Chunks muito pequenos perdem contexto e aumentam chamadas. Chunks muito grandes misturam assuntos e ocupam mais prompt. O splitter usa generator, produzindo chunks conforme o consumo.
 
-## 16. Fazendo a ingestão
+## ⚙️ 16. Fazendo a ingestão
 
 ```php
 $report = $ingestion->ingest($loader);
@@ -450,7 +538,7 @@ printf(
 
 Uma saída possível é `Completa: sim | chunks salvos: 3 | lotes salvos: 3`; números dependem do conteúdo.
 
-## 17. O que foi salvo
+## 🗄️ 17. O que foi salvo
 
 ```sql
 SELECT tenant_id, collection, chunk_id, document_id, position, status,
@@ -463,7 +551,9 @@ ORDER BY tenant_id, collection, document_id, position;
 
 `content` mantém o texto; `embedding`, o vetor; `metadata`, JSON; as colunas `embedding_*`, a identidade do espaço.
 
-## 18. Fazendo uma pergunta
+---
+
+## 💬 18. Fazendo uma pergunta
 
 ```php
 $answer = $rag->ask(
@@ -473,9 +563,9 @@ $answer = $rag->ask(
 echo $answer->content . PHP_EOL;
 ```
 
-A pergunta vira embedding; o banco aplica tenant, collection, status e espaço; os chunks viram contexto; a OpenAI redige a resposta. Uma saída ilustrativa é “A solicitação deve ser enviada em até 30 dias corridos”. A redação pode variar.
+A pergunta vira embedding; o banco aplica tenant, collection, status e espaço; os chunks viram contexto; o `LanguageModel` configurado redige a resposta. Uma saída ilustrativa é “A solicitação deve ser enviada em até 30 dias corridos”. A redação pode variar conforme o provider.
 
-## 19. Entendendo as fontes
+## 🔎 19. Entendendo as fontes
 
 ```php
 foreach ($answer->sources as $source) {
@@ -491,7 +581,7 @@ foreach ($answer->sources as $source) {
 
 Cada fonte é `VectorSearchResult`, contendo `chunk` e `distance`. O chunk expõe ID, documento, tenant, conteúdo, posição, metadata, collection e status.
 
-## 20. Tenant e collection
+## 🔐 20. Tenant e collection
 
 ```text
 empresa-a / recursos-humanos
@@ -502,7 +592,9 @@ Collections podem ter o mesmo nome, mas tenants diferentes permanecem isolados. 
 
 Como `TextFileLoader` usa `default`, collections personalizadas exigem loader próprio com `new Document(..., collection: 'financeiro')`.
 
-## 21. Utilizando cache
+---
+
+## ⚡ 21. Utilizando cache
 
 No primeiro teste, ignore cache. Primeiro confirme banco, ingestão e resposta.
 
@@ -510,7 +602,7 @@ No primeiro teste, ignore cache. Primeiro confirme banco, ingestão e resposta.
 use Omegaalfa\ContextEngine\Cache\CachedEmbeddingProvider;
 
 $embeddingProvider = new CachedEmbeddingProvider(
-    provider: $openAiEmbeddingProvider,
+    provider: $realEmbeddingProvider,
     cache: $psr16Cache,
     ttl: 3600,
 );
@@ -522,7 +614,7 @@ O cache precisa implementar `Psr\SimpleCache\CacheInterface`. A chave de embeddi
 use Omegaalfa\ContextEngine\Cache\CachedLanguageModel;
 
 $languageModel = new CachedLanguageModel(
-    model: $openAiLanguageModel,
+    model: $realLanguageModel,
     cache: $psr16Cache,
     tenantId: 'empresa-a',
     promptVersion: $promptBuilder->version,
@@ -535,7 +627,7 @@ Cache de resposta é desativado por padrão porque LLMs podem variar. A chave in
 
 O pacote não inclui adaptador Redis PSR-16. Compose e teste confirmam apenas Redis autenticado/persistente; a aplicação escolhe uma implementação PSR-16. Por isso não é inventada aqui uma classe Redis específica.
 
-## 22. Atualizando um documento
+## 🔄 22. Atualizando um documento
 
 O store usa **upsert**: insere se não existe e atualiza se já existe. A identidade é:
 
@@ -547,13 +639,13 @@ Reingerir a mesma identidade atualiza conteúdo, metadata, status e vetor, sem c
 
 O ID do loader depende de caminho + índice do bloco. Reorganizar parágrafos pode criar IDs diferentes; um loader próprio pode adotar IDs do domínio.
 
-## 23. Alterando o modelo de embedding
+## 🧬 23. Alterando o modelo de embedding
 
 Mudar provider, modelo, dimensão, revisão ou parâmetro semântico muda o fingerprint. Versões antigas e novas podem coexistir e não se misturam na busca.
 
 Uma coluna `vector(1536)` rejeita outra dimensão. Modelos com dimensões distintas exigem schema/tabelas compatíveis; o fingerprint resolve identidade lógica, não muda o tipo físico da coluna.
 
-## 24. Tratamento de erros
+## 🚨 24. Tratamento de erros
 
 | Sintoma | Causa provável | Como investigar e corrigir |
 |---|---|---|
@@ -583,7 +675,7 @@ try {
 
 Lotes persistidos permanecem duráveis; uma nova execução pode retomá-los com upsert idempotente.
 
-## 25. Como saber se funciona
+## ✅ 25. Como saber se funciona
 
 ```text
 [ ] PHP e extensões disponíveis
@@ -606,7 +698,69 @@ php example.php
 
 Nunca confira credenciais imprimindo-as em logs.
 
-## 26. Exemplo completo final
+---
+
+## 🚀 26. Exemplo completo final
+
+### Primeiro: a composição de produção é neutra
+
+Em produção, mantenha a montagem principal dependente dos contratos. A função abaixo não conhece OpenAI, Gemini, Ollama ou SDK externo:
+
+```php
+use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
+use Omegaalfa\ContextEngine\Contract\LanguageModel;
+use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
+use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
+use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
+use Omegaalfa\ContextEngine\Rag\RagPipeline;
+use Omegaalfa\ContextEngine\Retrieval\Retriever;
+use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
+use Omegaalfa\ContextEngine\Retrieval\VectorMetric;
+use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
+use Omegaalfa\ContextEngine\VectorStore\PgVectorStore;
+use Omegaalfa\FiberEventLoop\FiberEventLoop;
+use Omegaalfa\QueryBuilder\QueryBuilder;
+
+/** @return array{ingestion: IngestionPipeline, rag: RagPipeline} */
+function buildContextEngine(
+    EmbeddingProvider $embeddings,
+    LanguageModel $languageModel,
+    QueryBuilder $queryBuilder,
+): array {
+    $store = new PgVectorStore($queryBuilder);
+    $ingestion = new IngestionPipeline(
+        splitter: new RecursiveTextSplitter(chunkSize: 500, overlap: 75),
+        embeddings: $embeddings,
+        store: $store,
+        batchSize: 16,
+        executor: new FiberBatchEmbeddingExecutor(
+            loop: new FiberEventLoop(),
+            concurrency: 4,
+        ),
+    );
+    $rag = new RagPipeline(
+        retriever: new Retriever(
+            embeddings: $embeddings,
+            store: $store,
+            policy: new RetrievalPolicy(
+                limit: 5,
+                metric: VectorMetric::COSINE,
+            ),
+            collection: 'default',
+        ),
+        prompts: new ContextPromptBuilder(),
+        model: $languageModel,
+    );
+
+    return ['ingestion' => $ingestion, 'rag' => $rag];
+}
+```
+
+Se amanhã existirem `$geminiEmbeddings` e `$geminiLanguageModel` implementando os contratos, a chamada será simplesmente `buildContextEngine($geminiEmbeddings, $geminiLanguageModel, $queryBuilder)`. A engine não muda. Os adapters concretos pertencem ao bootstrap ou container de dependências da aplicação.
+
+### Depois: um bootstrap executável com os adapters disponíveis
+
+O arquivo a seguir usa OpenAI porque é o único `LanguageModel` concreto incluído atualmente, não porque a arquitetura dependa dela.
 
 Configure o ambiente:
 
@@ -732,34 +886,34 @@ try {
 
 Execute `php example.php`. Espere linhas no banco, resposta e fontes. Sem decorator de cache, embeddings são recalculados nas execuções seguintes, embora o upsert evite duplicatas.
 
-## 27. O que faz e o que não faz
+## ⚖️ 27. O que faz e o que não faz
 
 | O ContextEngine faz | A aplicação precisa fazer |
 |---|---|
 | Lê `.txt` | Fornecer arquivos/loaders adicionais |
 | Divide documentos | Escolher chunk e overlap |
-| Gera embeddings | Configurar OpenAI/Ollama |
+| Gera embeddings | Configurar um `EmbeddingProvider` (OpenAI, Ollama, Gemini próprio etc.) |
 | Limita concorrência HTTP | Escolher limite adequado |
 | Salva e busca no pgvector | Provisionar banco e schema |
 | Isola tenant/collection | Autenticar e escolher tenant |
 | Monta prompt/fontes | Definir regras da aplicação |
-| Gera resposta OpenAI | Controlar credencial/custo |
+| Gera resposta pelo provider injetado | Configurar `LanguageModel`, credencial e custo |
 | Aceita PSR-16 | Configurar backend de cache |
 | Expõe classes PHP | Criar API, CLI ou tela |
 
-## 28. Limitações atuais
+## 🚧 28. Limitações atuais
 
 - sem interface web, API HTTP ou CLI de aplicação;
 - loader nativo apenas para texto; PDF/HTML exigem implementação;
 - sem busca híbrida ou reranking;
 - providers atuais sem streaming incremental real;
 - extensão, tabela e índices não são criados em runtime;
-- OpenAI depende de rede/credencial; Ollama depende de serviço/modelo;
-- Ollama incluído apenas para embeddings;
+- providers externos, como OpenAI ou Gemini, dependem de rede/credencial; Ollama depende de serviço/modelo;
+- Ollama é incluído apenas para embeddings; Gemini ainda exige adapter próprio;
 - coluna `vector(n)` possui dimensão física fixa;
 - nenhum adaptador Redis PSR-16 incluído.
 
-## 29. Próximos passos do iniciante
+## 🪜 29. Próximos passos do iniciante
 
 1. Teste um arquivo e uma collection.
 2. Inspecione chunks e fontes.
@@ -770,7 +924,7 @@ Execute `php example.php`. Espere linhas no banco, resposta e fontes. Sem decora
 7. Configure cache depois de medir repetição.
 8. Monitore latência, erros, tokens, custo e qualidade.
 
-## 30. Resumo visual final
+## ✨ 30. Resumo visual final
 
 ```text
 Preparar: PHP + Composer + PostgreSQL + pgvector + provider
@@ -792,7 +946,9 @@ Responder: contexto para o modelo + resposta + fontes
 9. O prompt builder organiza pergunta e fontes.
 10. O modelo gera `Answer` com conteúdo e fontes.
 
-## Glossário resumido
+---
+
+## 📖 Glossário resumido
 
 | Termo | Resumo |
 |---|---|
@@ -807,7 +963,7 @@ Responder: contexto para o modelo + resposta + fontes
 | Provider | Adaptador para serviço. |
 | LLM | Modelo que escreve a resposta. |
 
-## Checklist de instalação
+## ☑️ Checklist de instalação
 
 ```text
 [ ] PHP 8.4 e extensões
@@ -816,13 +972,13 @@ Responder: contexto para o modelo + resposta + fontes
 [ ] PostgreSQL e pgvector
 [ ] Schema com dimensão correta
 [ ] Documento de exemplo
-[ ] OpenAI ou Ollama para embeddings
-[ ] OpenAI para resposta, no exemplo atual
+[ ] Um EmbeddingProvider configurado
+[ ] Um LanguageModel configurado
 [ ] Variáveis de banco
 [ ] example.php executado
 ```
 
-## Links relevantes
+## 🔗 Links relevantes
 
 - [ContextEngine](https://github.com/omegaalfa/ContextEngine)
 - [README](https://github.com/omegaalfa/ContextEngine/blob/main/README.md)
@@ -832,15 +988,15 @@ Responder: contexto para o modelo + resposta + fontes
 - [Código](https://github.com/omegaalfa/ContextEngine/tree/main/src) e [testes](https://github.com/omegaalfa/ContextEngine/tree/main/tests)
 - [QueryBuilder](https://github.com/omegaalfa/query-builder), [HttpClient](https://github.com/omegaalfa/HttpClient) e [FiberEventLoop](https://github.com/omegaalfa/FiberEventLoop)
 
-## Arquivos consultados
+## 🧾 Arquivos consultados
 
 `README.md`, `composer.json`, `composer.lock`, `.env.example`, `docker-compose.yml`, todos os contratos e módulos em `src/`, schema de integração, testes PgVector/Redis e testes unitários de arquitetura, ingestão, cache, retrieval e versionamento.
 
-## Pontos não confirmados
+## 🔬 Pontos não confirmados
 
 - publicação no Packagist: não localizada em 29/07/2026;
 - tag estável: o pacote atual exige `dev-main`;
-- dimensão de modelo Ollama: depende do modelo instalado;
-- disponibilidade/preço futuro dos modelos OpenAI: depende do serviço;
+- dimensão de modelos Ollama/Gemini: depende do modelo e adapter escolhidos;
+- disponibilidade/preço futuro de OpenAI, Gemini ou outro serviço: depende do fornecedor;
 - adaptador Redis PSR-16 recomendado: o pacote não escolhe um;
 - adequação a carga de produção específica: exige validação na aplicação real.
