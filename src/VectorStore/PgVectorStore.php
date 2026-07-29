@@ -1,0 +1,73 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Omegaalfa\ContextEngine\VectorStore;
+
+use JsonException;
+use Omegaalfa\ContextEngine\Chunk\Chunk;
+use Omegaalfa\ContextEngine\Contract\VectorStore;
+use Omegaalfa\ContextEngine\Embedding\EmbeddedChunk;
+use Omegaalfa\ContextEngine\Exception\InvalidEmbeddingException;
+use Omegaalfa\ContextEngine\Retrieval\VectorMetric as ContextVectorMetric;
+use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
+use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
+use Omegaalfa\QueryBuilder\Enums\SqlOperator;
+use Omegaalfa\QueryBuilder\PostgreSQL\PgVector\Vector;
+use Omegaalfa\QueryBuilder\PostgreSQL\PgVector\VectorMetric;
+use Omegaalfa\QueryBuilder\QueryBuilder;
+
+final readonly class PgVectorStore implements VectorStore
+{
+    public function __construct(private QueryBuilder $query, private PgVectorSchema $schema = new PgVectorSchema()) {}
+    public function storeBatch(array $chunks): void
+    {
+        $first = $chunks[0]->embedding;
+        $rows = [];
+        foreach ($chunks as $item) {
+            if ($item->embedding->space->fingerprint() !== $first->space->fingerprint()) {
+                throw new InvalidEmbeddingException('A batch cannot mix vector spaces.');
+            }
+            $chunk = $item->chunk;
+            $rows[] = [$this->schema->chunkId => $chunk->id, $this->schema->documentId => $chunk->documentId, $this->schema->tenantId => $chunk->tenantId, $this->schema->collection => $chunk->collection, $this->schema->status => $chunk->status, $this->schema->content => $chunk->content, $this->schema->position => $chunk->position, $this->schema->metadata => json_encode($chunk->metadata, JSON_THROW_ON_ERROR), $this->schema->embedding => new Vector($item->embedding->values, $item->embedding->dimensions()), $this->schema->embeddingProvider => $item->embedding->space->provider, $this->schema->embeddingModel => $item->embedding->space->model, $this->schema->embeddingDimensions => $item->embedding->space->dimensions, $this->schema->embeddingRevision => $item->embedding->space->revision, $this->schema->embeddingFingerprint => $item->embedding->space->fingerprint()];
+        }
+        $this->query->insertBatch($this->schema->table, $rows)->onConflict([$this->schema->tenantId, $this->schema->collection, $this->schema->chunkId, $this->schema->embeddingFingerprint])->doUpdate([$this->schema->content, $this->schema->metadata, $this->schema->status, $this->schema->embedding]);
+        $this->query->execute();
+    }
+    public function search(VectorSearchQuery $query): array
+    {
+        $space = $query->embedding->space;
+        $fields = [$this->schema->chunkId, $this->schema->documentId, $this->schema->tenantId, $this->schema->collection, $this->schema->status, $this->schema->content, $this->schema->position, $this->schema->metadata];
+        $metric = match ($query->policy->metric) {
+            ContextVectorMetric::L2 => VectorMetric::L2,
+            ContextVectorMetric::INNER_PRODUCT => VectorMetric::INNER_PRODUCT,
+            ContextVectorMetric::COSINE => VectorMetric::COSINE,
+            ContextVectorMetric::L1 => VectorMetric::L1,
+        };
+        $operation = $this->query->select($this->schema->table, $fields)->nearestNeighbors($this->schema->embedding, new Vector($query->embedding->values), $metric, 'distance', $space->dimensions)->where($this->schema->tenantId, SqlOperator::EQUALS, $query->tenantId)->where($this->schema->status, SqlOperator::EQUALS, $query->status)->where($this->schema->embeddingProvider, SqlOperator::EQUALS, $space->provider)->where($this->schema->embeddingModel, SqlOperator::EQUALS, $space->model)->where($this->schema->embeddingDimensions, SqlOperator::EQUALS, $space->dimensions)->where($this->schema->embeddingRevision, SqlOperator::EQUALS, $space->revision)->where($this->schema->embeddingFingerprint, SqlOperator::EQUALS, $space->fingerprint());
+        if ($query->collection !== null) {
+            $operation->where($this->schema->collection, SqlOperator::EQUALS, $query->collection);
+        }
+        $operation->limit($query->policy->limit);
+        $result = $this->query->execute(false);
+        $found = [];
+        foreach ($result->data as $row) {
+            $distance = (float) $row['distance'];
+            if ($query->policy->maximumDistance !== null && $distance > $query->policy->maximumDistance) {
+                continue;
+            }
+            $decoded = json_decode((string) $row[$this->schema->metadata], true, flags: JSON_THROW_ON_ERROR);
+            $metadata = [];
+            if (is_array($decoded)) {
+                foreach ($decoded as $key => $value) {
+                    if (is_string($key) && (is_scalar($value) || $value === null)) {
+                        $metadata[$key] = $value;
+                    }
+                }
+            }
+            $chunk = new Chunk((string) $row[$this->schema->chunkId], (string) $row[$this->schema->documentId], (string) $row[$this->schema->tenantId], (string) $row[$this->schema->content], (int) $row[$this->schema->position], $metadata, (string) $row[$this->schema->collection], (string) $row[$this->schema->status]);
+            $found[] = new VectorSearchResult($chunk, $distance);
+        }
+        return $found;
+    }
+}

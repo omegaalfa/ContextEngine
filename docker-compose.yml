@@ -1,0 +1,48 @@
+name: context-engine
+
+services:
+  pgvector:
+    image: pgvector/pgvector:0.8.5-pg17-bookworm@sha256:d2ef61f42ef767baa5a1475393303cc235bcd92febd9d7014eddb48b41f3bad0
+    profiles: [integration]
+    environment:
+      POSTGRES_DB: ${CONTEXT_ENGINE_PGVECTOR_DATABASE:?Define CONTEXT_ENGINE_PGVECTOR_DATABASE in .env}
+      POSTGRES_USER: ${CONTEXT_ENGINE_PGVECTOR_USERNAME:?Define CONTEXT_ENGINE_PGVECTOR_USERNAME in .env}
+      POSTGRES_PASSWORD: ${CONTEXT_ENGINE_PGVECTOR_PASSWORD:?Define CONTEXT_ENGINE_PGVECTOR_PASSWORD in .env}
+    ports:
+      - "${CONTEXT_ENGINE_PGVECTOR_PORT:-54329}:5432"
+    volumes:
+      - context_engine_pgvector_data:/var/lib/postgresql/data
+      - ./tests/Integration/Fixtures/postgresql/schema.sql:/docker-entrypoint-initdb.d/10-context-engine.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    networks: [context_engine]
+
+  redis:
+    image: redis:7.4.10-alpine3.21@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+    profiles: [integration]
+    environment:
+      REDIS_PASSWORD: ${CONTEXT_ENGINE_REDIS_PASSWORD:?Define CONTEXT_ENGINE_REDIS_PASSWORD in .env}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    ports:
+      - "${CONTEXT_ENGINE_REDIS_PORT:-63799}:6379"
+    volumes:
+      - context_engine_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$${REDIS_PASSWORD}\" redis-cli ping | grep -q PONG"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    networks: [context_engine]
+
+networks:
+  context_engine:
+    driver: bridge
+
+volumes:
+  context_engine_pgvector_data:
+  context_engine_redis_data:

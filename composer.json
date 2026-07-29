@@ -1,0 +1,43 @@
+{
+  "name": "omegaalfa/context-engine",
+  "description": "Typed RAG engine for the Omegaalfa ecosystem.",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": "^8.4",
+    "omegaalfa/query-builder": "dev-main",
+    "omegaalfa/http-client": "dev-main",
+    "omegaalfa/fiber-event-loop": "dev-main",
+    "psr/simple-cache": "^3.0"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3.80",
+    "phpstan/phpstan": "^2.1",
+    "phpunit/phpunit": "^12.0"
+  },
+  "suggest": {
+    "omegaalfa/collection": "Pode ser usado pela aplicação para composição de coleções e sequências lazy.",
+    "omegaalfa/lazy-object": "Pode ser usado pela aplicação para inicialização tardia de providers e serviços."
+  },
+  "autoload": {"psr-4": {"Omegaalfa\\ContextEngine\\": "src/"}},
+  "autoload-dev": {"psr-4": {"Omegaalfa\\ContextEngine\\Tests\\": "tests/"}},
+  "repositories": [
+    {"type": "path", "url": "../query-builder", "options": {"symlink": true}},
+    {"type": "path", "url": "../HttpClient", "options": {"symlink": true}},
+    {"type": "path", "url": "../FiberEventLoop", "options": {"symlink": true}}
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "scripts": {
+    "test": "phpunit",
+    "test:unit": "phpunit --testsuite unit",
+    "test:integration": "phpunit --testsuite integration",
+    "integration:up": "docker compose --profile integration up -d --wait",
+    "integration:down": "docker compose --profile integration down",
+    "analyse": "phpstan analyse",
+    "style": "php-cs-fixer fix --dry-run --diff",
+    "style:fix": "php-cs-fixer fix",
+    "check": ["@style", "@test", "@analyse"]
+  },
+  "config": {"sort-packages": true}
+}
