@@ -1,5 +1,15 @@
 # Providers incluídos
 
+| Capacidade | Implementação incluída | Observação |
+|---|---|---|
+| Embeddings OpenAI | `OpenAIEmbeddingProvider` | Buffered HTTP; lote por request. |
+| Embeddings Ollama | `OllamaEmbeddingProvider` | Modelo e dimensão vêm da aplicação. |
+| Resposta OpenAI | `OpenAILanguageModel` | Resposta completa, sem streaming incremental. |
+| Gemini | — | Exige adapter próprio atualmente. |
+| Resposta Ollama | — | Não existe `OllamaLanguageModel` no pacote. |
+
+Pipelines dependem de `EmbeddingProvider`, `LanguageModel` e, quando real, `StreamingLanguageModel`. Portanto, adicionar fornecedor não exige alterar ingestão ou RAG, mas exige um adapter que preserve os contratos.
+
 ## OpenAIEmbeddingProvider
 
 Namespace: `Omegaalfa\ContextEngine\Provider\OpenAI`. Construtor:
@@ -41,11 +51,16 @@ declare(strict_types=1);
 
 use Omegaalfa\ContextEngine\Provider\Ollama\OllamaEmbeddingProvider;
 
+$modelName = (string) getenv('OLLAMA_EMBEDDING_MODEL');
+$modelDimensions = (int) getenv('OLLAMA_EMBEDDING_DIMENSIONS');
+
 $provider = new OllamaEmbeddingProvider(
-    model: 'nomic-embed-text',
-    dimensions: 768,
+    model: $modelName,
+    dimensions: $modelDimensions,
 );
 ```
+
+Os valores não possuem padrão no código. Valide que não estão vazios/zerados e que correspondem ao modelo realmente instalado antes de construir o provider.
 
 ## OpenAILanguageModel
 

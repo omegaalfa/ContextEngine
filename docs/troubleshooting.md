@@ -20,3 +20,5 @@
 | timeout | rede/provider lento | configure o `AsyncHttpClient` injetado com timeouts adequados |
 
 Para SQL, use logs seguros do QueryBuilder sem expor conteúdo sensível. Para problemas Docker, `docker compose ps` e `docker compose logs pgvector`/`redis` mostram healthchecks e inicialização.
+
+Para distinguir erro de configuração de recurso ainda ausente, consulte [Limitações e escopo](limitations.md). Gemini, LLM Ollama, busca híbrida e reranking não possuem implementação nativa no estado atual.

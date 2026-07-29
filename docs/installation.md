@@ -11,13 +11,11 @@
 
 Dependências obrigatórias: QueryBuilder, HttpClient, FiberEventLoop e PSR-16. `omegaalfa/collection` e `omegaalfa/lazy-object` são sugestões para composição na aplicação, não requisitos do núcleo.
 
-## Packagist
+## Instalação atual por VCS
 
-```bash
-composer require omegaalfa/context-engine
-```
+A publicação de `omegaalfa/context-engine` no Packagist não foi confirmada. Não use `composer require` sem antes declarar os repositórios VCS. O `composer.json` completo e atual está em [Primeiros passos](getting-started.md#-7-instalando-a-biblioteca).
 
-Enquanto os pacotes Omegaalfa estiverem em `dev-main`, pode ser necessário permitir estabilidade dev no projeto consumidor. Quando publicados de forma estável, o consumidor não precisará dos repositories locais.
+ContextEngine, QueryBuilder, HttpClient e FiberEventLoop precisam ser declarados em `repositories`; a constraint atual é `dev-main`, com `minimum-stability: dev`. Não há tag estável documentada.
 
 ## Desenvolvimento no monorepo
 

@@ -1,5 +1,7 @@
 # Conceitos principais
 
+Esta é uma referência rápida. Se RAG, embedding ou busca vetorial forem conceitos novos para você, leia as explicações em três níveis — o que é, para que serve e como a engine usa — em [Primeiros passos](getting-started.md#-3-glossário-para-iniciantes).
+
 ## Documento e chunk
 
 `Document` é conteúdo de uma fonte dentro de um tenant e collection. `Chunk` é uma unidade recuperável com posição e ID lógico. Um `Chunk` criado externamente pode reutilizar o mesmo ID em tenants diferentes; por isso `chunk_id` isolado não é global.

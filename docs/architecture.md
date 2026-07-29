@@ -44,6 +44,57 @@ BatchEmbeddingExecutor ───→ EmbeddingProvider
 
 A ingestão e a consulta são fluxos separados. A ingestão produz estado vetorial durável. A consulta cria um embedding da pergunta no mesmo `EmbeddingSpace`, recupera evidências compatíveis e só então chama o modelo de linguagem.
 
+### Diagrama arquitetural completo
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ APPLICATION                                                 │
+│ API / CLI / Web / autenticação / autorização               │
+└────────────────────────────┬────────────────────────────────┘
+                             ↓
+┌─────────────────────────────────────────────────────────────┐
+│ CONTEXTENGINE                                               │
+│                                                             │
+│ INGESTÃO                                                    │
+│ DocumentLoader → Document → IngestionPipeline               │
+│                              ↓                              │
+│                         TextSplitter → Chunk[]               │
+│                              ↓                              │
+│                  BatchEmbeddingExecutor                     │
+│                              ↓                              │
+│             CachedEmbeddingProvider (opcional)              │
+│                 ↓ hit              ↓ miss                   │
+│        PSR-16 CacheInterface   EmbeddingProvider             │
+│                                      ↓                      │
+│                         Embedding + EmbeddingSpace           │
+│                                      ↓                      │
+│                                 VectorStore                 │
+│                                      ↓                      │
+│                         PostgreSQL + pgvector                │
+│                                                             │
+│ CONSULTA RAG                                                │
+│ Question → Retriever → EmbeddingProvider                    │
+│               ↓              ↓                              │
+│               └──────── VectorStore                         │
+│                          filtros SQL:                       │
+│                          tenant + collection? + status      │
+│                          + provider + model + dimensions    │
+│                          + revision + fingerprint           │
+│                              ↓                              │
+│                         Top K chunks                        │
+│                              ↓                              │
+│                    ContextPromptBuilder                     │
+│                              ↓                              │
+│             CachedLanguageModel (opcional, desligado)       │
+│                 ↓ hit              ↓ miss                   │
+│        PSR-16 CacheInterface      LanguageModel              │
+│                                      ↓                      │
+│                              Answer + Sources               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+`collection` só entra no SQL quando configurada. Cache não altera os contratos: decorators podem envolver provider/modelo, enquanto pipelines continuam dependentes das mesmas interfaces. A aplicação externa controla endpoints, autenticação e apresentação.
+
 ## 2. Organização do projeto
 
 ### `Cache`

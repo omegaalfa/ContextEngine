@@ -69,6 +69,21 @@ final readonly class LocalEmbeddingProvider implements EmbeddingProvider
 
 Garanta cardinalidade, ordem, dimensão e espaço. O provider não controla concorrência global.
 
+## Gemini ou outro fornecedor
+
+Não existe adapter Gemini incluído. Uma integração externa deve implementar `EmbeddingProvider`, `LanguageModel` e/ou `StreamingLanguageModel`, apenas conforme as capacidades reais do transporte.
+
+O adapter fica responsável por:
+
+- validar credencial, endpoint, modelo e dimensão;
+- traduzir request/response sem expor o SDK no contrato;
+- declarar `EmbeddingSpace` com parâmetros semânticos;
+- preservar cardinalidade e ordem em batches;
+- converter falhas externas em diagnóstico consistente;
+- implementar streaming somente se receber dados incrementalmente.
+
+Depois disso, injete a implementação nas pipelines exatamente como os providers incluídos. Nenhuma alteração em `IngestionPipeline`, `Retriever` ou `RagPipeline` é necessária.
+
 ## LanguageModel e streaming
 
 `LanguageModel::complete()` retorna uma resposta completa. `StreamingLanguageModel::stream()` é independente e só deve ser implementado com transporte incremental. Não reutilize completion buffered para criar deltas.

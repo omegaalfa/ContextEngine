@@ -1,39 +1,117 @@
+<div align="center">
+
 # Ω ContextEngine
 
-> 🧠 RAG tipado para PHP 8.4 · 🐘 PostgreSQL/pgvector · 🧵 Fibers · 🔒 multi-tenant
+### RAG tipado e multi-tenant para aplicações PHP 8.4
 
-Biblioteca RAG oficial do ecossistema Omegaalfa para PHP 8.4. Ela organiza carregamento, chunking, embeddings, persistência pgvector, retrieval, construção de prompt e geração de resposta sem expor concorrência assíncrona na API de aplicação.
+[![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)](https://www.php.net/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![License MIT](https://img.shields.io/badge/license-MIT-22C55E)](LICENSE)
 
-## ✨ Recursos
+**Documentos → embeddings → busca vetorial → contexto → resposta com fontes**
 
-- domínio imutável com tenant, collection e identidade vetorial explícitos;
-- splitter recursivo por parágrafo, linha, sentença, palavra e caractere;
-- ingestão em lotes com janela limitada de Fibers e persistência serial;
-- OpenAI e Ollama para embeddings; OpenAI buffered para respostas;
-- pgvector através das APIs tipadas de `omegaalfa/query-builder`;
-- caches PSR-16 como decorators;
-- falha parcial diagnosticável e streaming somente quando incremental de verdade.
+</div>
 
-## 📦 Requisitos e instalação
+ContextEngine é uma biblioteca PHP para construir pipelines de RAG (*Retrieval-Augmented Generation*). Ela prepara documentos, armazena embeddings no PostgreSQL/pgvector, recupera chunks relevantes e entrega contexto a um modelo de linguagem.
 
-- PHP `^8.4`, PDO e sockets;
-- `omegaalfa/query-builder`, `omegaalfa/http-client`, `omegaalfa/fiber-event-loop` em `dev-main` nesta fase;
-- PostgreSQL com pgvector para `PgVectorStore`.
+É o motor da solução, não uma aplicação completa: não inclui interface web, autenticação, controller HTTP ou CLI de produto.
 
-```bash
-composer require omegaalfa/context-engine
-```
+> [!IMPORTANT]
+> O núcleo é funcional e possui testes automatizados, mas o projeto continua em desenvolvimento ativo, usa `dev-main` e ainda não possui versão estável confirmada. A API pública pode sofrer mudanças incompatíveis. Avalie e teste cuidadosamente antes de cargas críticas de produção.
 
-Durante desenvolvimento local, o `composer.json` usa repositories `path` para os três pacotes Omegaalfa irmãos. Uma distribuição Packagist não deve exigir esses caminhos no projeto consumidor.
+## ✨ Recursos principais
 
-## 🔄 Primeiro fluxo
+| Disponível | Ainda não incluído |
+|---|---|
+| ✅ Pipeline incremental de ingestão | ⚠️ Loaders nativos para PDF, HTML ou Markdown |
+| ✅ Busca vetorial com PostgreSQL/pgvector | ⚠️ Adapter Gemini |
+| ✅ RAG com resposta e fontes | ⚠️ Busca híbrida |
+| ✅ Tenant, collection e status | ⚠️ Reranking |
+| ✅ `EmbeddingSpace` e fingerprint | ⚠️ Streaming incremental nos providers atuais |
+| ✅ Providers substituíveis por contratos | ⚠️ Interface web, API ou autenticação |
+| ✅ Cache PSR-16 opcional por decorators | |
+| ✅ Concorrência controlada com Fibers | |
+| ✅ Upsert idempotente por espaço vetorial | |
+
+## 🧭 Como funciona
+
+**Diagrama executivo — visão conceitual:**
 
 ```text
-DocumentLoader → TextSplitter → Chunk → EmbeddingProvider
-→ EmbeddedChunk → VectorStore → Retriever → Prompt → LanguageModel → Answer
+INGESTÃO                                  CONSULTA RAG
+
+Documentos                               Pergunta
+    ↓                                        ↓
+Loader                                  mesmo EmbeddingProvider
+    ↓                                        ↓
+Splitter → chunks                       Retriever
+    ↓                                        ↓
+EmbeddingProvider ───────────────────→ Vector Store
+    ↓                                        ↓
+Vector Store                            Contexto selecionado
+    ↓                                        ↓
+PostgreSQL + pgvector                   Language Model
+                                             ↓
+                                        Resposta + fontes
 ```
 
-### Ingestão
+O mesmo `EmbeddingProvider` cria vetores dos chunks e da pergunta. Assim, todos usam um espaço vetorial compatível. Documentos são ingeridos quando adicionados ou atualizados; durante uma pergunta, os arquivos não são lidos novamente.
+
+## 💡 Por que usar o ContextEngine?
+
+Pode ser adequado quando:
+
+- sua aplicação principal já está em PHP moderno;
+- você deseja controlar diretamente a composição do pipeline;
+- quer usar PostgreSQL/pgvector como store vetorial;
+- não quer introduzir um serviço Python apenas para o fluxo RAG;
+- precisa de isolamento por tenant e collection;
+- quer substituir providers por contratos próprios;
+- precisa testar loader, splitter, provider, store e modelo separadamente;
+- quer cache opcional sem acoplá-lo ao domínio.
+
+Essa é uma decisão arquitetural, não uma comparação de desempenho com outros frameworks.
+
+## 📦 Requisitos
+
+- PHP `^8.4` com PDO, `pdo_pgsql` e sockets;
+- Composer;
+- PostgreSQL com extensão pgvector;
+- schema provisionado pela aplicação;
+- OpenAI ou Ollama para os adapters de embedding incluídos;
+- OpenAI para o `LanguageModel` incluído, ou implementação própria;
+- Redis somente se a aplicação escolher um cache PSR-16 baseado em Redis.
+
+## ⬇️ Instalação
+
+O pacote usa `dev-main` e a publicação no Packagist não foi confirmada. A instalação VCS atual precisa declarar ContextEngine e os três repositórios irmãos:
+
+```json
+{
+  "require": {
+    "php": "^8.4",
+    "omegaalfa/context-engine": "dev-main"
+  },
+  "repositories": [
+    {"type": "vcs", "url": "https://github.com/omegaalfa/ContextEngine"},
+    {"type": "vcs", "url": "https://github.com/omegaalfa/query-builder"},
+    {"type": "vcs", "url": "https://github.com/omegaalfa/HttpClient"},
+    {"type": "vcs", "url": "https://github.com/omegaalfa/FiberEventLoop"}
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}
+```
+
+```bash
+composer install
+```
+
+Consulte [Primeiros passos](docs/getting-started.md) para banco, dimensão, Docker e configuração completa.
+
+## 📥 Ingestão mínima
+
+**Código copiável; pressupõe `$embeddingProvider` e `$vectorStore` já configurados:**
 
 ```php
 <?php
@@ -44,7 +122,6 @@ use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Loader\TextFileLoader;
 use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
 
-// $embeddingProvider e $vectorStore são composições descritas na documentação.
 $pipeline = new IngestionPipeline(
     splitter: new RecursiveTextSplitter(chunkSize: 1_000, overlap: 150),
     embeddings: $embeddingProvider,
@@ -57,7 +134,11 @@ $report = $pipeline->ingest(
 );
 ```
 
-### Pergunta e resposta
+O loader pronto usa collection `default`, status `active` e cria um documento por bloco de texto separado por linha vazia.
+
+## 💬 Pergunta mínima
+
+**Código copiável; pressupõe os mesmos embeddings/store e um `$languageModel`:**
 
 ```php
 <?php
@@ -69,60 +150,81 @@ use Omegaalfa\ContextEngine\Rag\RagPipeline;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
 
 $rag = new RagPipeline(
-    retriever: new Retriever($embeddingProvider, $vectorStore, collection: 'docs'),
+    retriever: new Retriever(
+        embeddings: $embeddingProvider,
+        store: $vectorStore,
+        collection: 'default',
+    ),
     prompts: new ContextPromptBuilder(),
     model: $languageModel,
 );
 
-$answer = $rag->ask('Qual é o prazo de retenção?', 'tenant-42');
+$answer = $rag->ask('Qual é o prazo de reembolso?', 'tenant-42');
+
 echo $answer->content;
+foreach ($answer->sources as $source) {
+    echo PHP_EOL . $source->chunk->content;
+}
 ```
 
-## 🧩 Infraestrutura suportada
+## 🧩 Infraestrutura incluída
 
-- **Embeddings:** `OpenAIEmbeddingProvider`, `OllamaEmbeddingProvider`.
+- **Embeddings:** `OpenAIEmbeddingProvider` e `OllamaEmbeddingProvider`.
 - **LLM:** `OpenAILanguageModel`, com resposta buffered.
-- **Banco vetorial:** PostgreSQL + pgvector.
-- **Cache:** qualquer PSR-16; Redis é apenas infraestrutura opt-in de integração.
-- **Concorrência:** `FiberBatchEmbeddingExecutor`, padrão de quatro lotes por janela.
-- **Streaming:** contrato disponível, mas nenhum provider HTTP incluído implementa streaming incremental atualmente.
+- **Store:** `PgVectorStore` via `omegaalfa/query-builder`.
+- **Cache:** `CachedEmbeddingProvider` e `CachedLanguageModel`, ambos PSR-16.
+- **Concorrência:** `FiberBatchEmbeddingExecutor`, sem `Future` na API pública.
+- **Streaming:** contrato independente, sem provider incremental incluído atualmente.
 
-## 🗺️ Documentação
+Gemini e outros fornecedores podem ser integrados implementando os contratos públicos; nenhum adapter Gemini está incluído hoje.
 
-- [Índice completo](docs/index.md)
-- [Guia completo para iniciantes](docs/beginner-guide.md)
-- [Primeiros passos](docs/getting-started.md)
-- [Instalação](docs/installation.md)
-- [Arquitetura](docs/architecture.md)
-- [Conceitos](docs/core-concepts.md)
-- [Ingestão](docs/ingestion.md)
-- [Embeddings](docs/embeddings.md)
-- [PgVectorStore](docs/vector-store.md) e [schema](docs/database-schema.md)
-- [Retrieval](docs/retrieval.md) e [pipeline RAG](docs/rag-pipeline.md)
-- [Providers](docs/providers.md), [cache](docs/caching.md), [concorrência](docs/concurrency.md) e [streaming](docs/streaming.md)
-- [Referência da API](docs/api-reference.md)
-- [Segurança](docs/security.md), [erros](docs/error-handling.md) e [troubleshooting](docs/troubleshooting.md)
+## 🚧 Limitações resumidas
 
-## ✅ Testes
+### Escopo deliberado
+
+- biblioteca sem interface web/API/autenticação;
+- schema gerenciado pela aplicação;
+- PostgreSQL/pgvector é o store concreto incluído.
+
+### Ainda não implementado
+
+- busca híbrida, reranking e streaming incremental;
+- loaders estruturados adicionais;
+- adapter Gemini e LLM Ollama.
+
+### Infraestrutura
+
+- `vector(n)` possui dimensão física fixa;
+- provider, modelo, dimensão, revisão e schema precisam ser compatíveis;
+- serviços externos exigem rede/credenciais; Ollama exige serviço/modelo local.
+
+Veja [Limitações e escopo](docs/limitations.md) para os impactos práticos.
+
+## 📚 Documentação
+
+| Objetivo | Documento |
+|---|---|
+| Aprender RAG do zero | [Primeiros passos](docs/getting-started.md) |
+| Entender módulos e dependências | [Arquitetura](docs/architecture.md) |
+| Consultar termos centrais | [Conceitos](docs/core-concepts.md) |
+| Configurar fornecedores | [Providers](docs/providers.md) |
+| Configurar decorators | [Cache](docs/caching.md) |
+| Criar adapters próprios | [Extensão](docs/extension-guide.md) |
+| Diagnosticar problemas | [Troubleshooting](docs/troubleshooting.md) |
+| Avaliar fronteiras atuais | [Limitações](docs/limitations.md) |
+| Navegar por todos os guias | [Índice completo](docs/index.md) |
+
+## ✅ Qualidade
 
 ```bash
 composer validate --strict
 vendor/bin/phpunit --testsuite unit
 vendor/bin/phpstan analyse --no-progress
 vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no
-docker compose --env-file .env.example --profile integration config --quiet
 ```
 
-Integrações são opt-in. Consulte [Docker e integração](docs/docker-integration.md).
-
-## ⚠️ Limitações
-
-- O HttpClient materializa a resposta; OpenAI não anuncia streaming incremental.
-- A dimensão `vector(n)` deve ser provisionada para o espaço usado.
-- Extensão, tabela, migrations e índices não são criados em runtime.
-- Conteúdo é repetido quando um chunk é armazenado em espaços diferentes.
-- Loaders estruturados, Gemini, Anthropic, reranking e busca híbrida estão no roadmap.
+Integrações pgvector e Redis são opt-in. Consulte [Docker e integração](docs/docker-integration.md).
 
 ## 📄 Licença
 
-[MIT](LICENSE).
+[MIT](LICENSE)
