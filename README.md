@@ -90,6 +90,7 @@ echo $answer->content;
 ## 🗺️ Documentação
 
 - [Índice completo](docs/index.md)
+- [Guia completo para iniciantes](docs/beginner-guide.md)
 - [Primeiros passos](docs/getting-started.md)
 - [Instalação](docs/installation.md)
 - [Arquitetura](docs/architecture.md)
