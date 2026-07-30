@@ -225,6 +225,10 @@ vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no
 
 Integrações pgvector e Redis são opt-in. Consulte [Docker e integração](docs/docker-integration.md).
 
+```bash
+./context-engine.sh          # abre o menu visual interativo
+```
+
 ## 📄 Licença
 
 [MIT](LICENSE)

@@ -1,5 +1,34 @@
 # Docker e integração
 
+## Controle rápido dos serviços
+
+O script executável `context-engine.sh` abre um painel visual com opções numeradas. Basta executar e escolher no menu:
+
+```bash
+./context-engine.sh
+```
+
+Os comandos diretos continuam disponíveis como atalhos opcionais:
+
+```bash
+./context-engine.sh up              # sobe tudo e aguarda saúde
+./context-engine.sh up pgvector     # sobe somente PostgreSQL/pgvector
+./context-engine.sh stop            # para sem remover containers
+./context-engine.sh restart redis   # recria somente Redis
+./context-engine.sh status          # mostra estado e healthcheck
+./context-engine.sh logs pgvector   # acompanha logs
+./context-engine.sh down            # remove containers/rede, preserva volumes
+./context-engine.sh config          # valida/exibe o Compose resolvido
+```
+
+Ele usa `.env` quando presente e recorre a `.env.example` sem criar arquivos. Para outro arquivo:
+
+```bash
+CONTEXT_ENGINE_ENV_FILE=/caminho/servicos.env ./context-engine.sh up
+```
+
+`down` não passa `--volumes`; os dados persistentes são preservados.
+
 O Compose opt-in contém apenas pgvector e Redis, com imagens/digests fixos, healthchecks, rede e volumes próprios.
 
 ```bash
