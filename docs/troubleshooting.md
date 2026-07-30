@@ -5,7 +5,7 @@
 | `Expected N dimensions` | vetor/provider diferente do espaço | compare `EmbeddingSpace::dimensions` com resposta e `vector(n)` |
 | tipo `vector` ausente | pgvector não habilitado | confirme `CREATE EXTENSION vector` no ambiente provisionado |
 | conexão recusada | container/host/porta incorretos | rode healthcheck e confira `.env`; tente porta alternativa |
-| porta ocupada | outra stack usa 54329/63799 | sobrescreva `CONTEXT_ENGINE_*_PORT` |
+| porta ocupada | outra stack usa 54339/63809 | sobrescreva `CONTEXT_ENGINE_*_PORT` |
 | Redis indisponível | serviço/senha incorretos | valide healthcheck e `CONTEXT_ENGINE_REDIS_PASSWORD` |
 | 401/403 OpenAI | API key inválida | confirme secret e não registre Authorization em logs |
 | cardinalidade diferente | provider não devolveu um vetor por texto | corrija implementação; o executor/pipeline rejeita o lote |
@@ -18,7 +18,18 @@
 | erro de conflito | PK/schema não coincide com store | use PK composta documentada e reprovisione a fixture |
 | rate limit | batch/janela agressivos | reduza `batchSize`/`concurrency` e aplique retry no nível apropriado |
 | timeout | rede/provider lento | configure o `AsyncHttpClient` injetado com timeouts adequados |
+| `ingest()` permanece aguardando | cliente HTTP e executor usam loops diferentes | injete a mesma instância de `FiberEventLoop` nos dois componentes |
 
 Para SQL, use logs seguros do QueryBuilder sem expor conteúdo sensível. Para problemas Docker, `docker compose ps` e `docker compose logs pgvector`/`redis` mostram healthchecks e inicialização.
+
+Se a chamada trava justamente em `IngestionPipeline::ingest()`, revise primeiro a composição concorrente:
+
+```text
+um FiberEventLoop
+├── AsyncHttpClient usado pelo EmbeddingProvider
+└── FiberBatchEmbeddingExecutor usado pela IngestionPipeline
+```
+
+Um `AsyncHttpClient()` com loop implícito e um executor com outro loop não compartilham o mesmo scheduler. Veja a montagem completa em [Concorrência e backpressure](concurrency.md).
 
 Para distinguir erro de configuração de recurso ainda ausente, consulte [Limitações e escopo](limitations.md). Gemini, LLM Ollama, busca híbrida e reranking não possuem implementação nativa no estado atual.

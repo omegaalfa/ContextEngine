@@ -12,12 +12,26 @@ use Omegaalfa\ContextEngine\Support\TextNormalizer;
 
 final readonly class RecursiveTextSplitter implements TextSplitter
 {
-    public function __construct(public int $chunkSize = 1000, public int $overlap = 150, private TextNormalizer $normalizer = new TextNormalizer())
+    /**
+     * @param int $chunkSize
+     * @param int $overlap
+     * @param TextNormalizer $normalizer
+     */
+    public function __construct(
+        public int             $chunkSize = 1000,
+        public int             $overlap = 150,
+        private TextNormalizer $normalizer = new TextNormalizer()
+    )
     {
         if ($chunkSize < 1 || $overlap < 0 || $overlap >= $chunkSize) {
             throw new InvalidArgumentException('Overlap must be non-negative and smaller than chunk size.');
         }
     }
+
+    /**
+     * @param Document $document
+     * @return iterable
+     */
     public function split(Document $document): iterable
     {
         $parts = $this->partition($this->normalizer->normalize($document->content), 0);
@@ -29,11 +43,24 @@ final readonly class RecursiveTextSplitter implements TextSplitter
                 $content = mb_substr($content, 0, $this->chunkSize);
             }
             $id = hash('sha256', $document->tenantId . "\0" . $document->id . "\0" . $position . "\0" . $content);
-            yield new Chunk($id, $document->id, $document->tenantId, $content, $position, $document->metadata, $document->collection, $document->status);
+            yield new Chunk(
+                $id,
+                $document->id,
+                $document->tenantId,
+                $content, $position,
+                $document->metadata,
+                $document->collection,
+                $document->status
+            );
             $previous = $part;
         }
     }
-    /** @return list<string> */
+
+    /**
+     * @param string $text
+     * @param int $level
+     * @return list<string>
+     */
     private function partition(string $text, int $level): array
     {
         if (mb_strlen($text) <= $this->chunkSize) {
@@ -69,19 +96,31 @@ final readonly class RecursiveTextSplitter implements TextSplitter
         }
         return $chunks;
     }
-    /** @return list<string> */
+
+    /**
+     * @param string $text
+     * @return list<string>
+     */
     private function characters(string $text): array
     {
         $out = [];
         for ($i = 0, $n = mb_strlen($text); $i < $n; $i += $this->chunkSize) {
             $out[] = mb_substr($text, $i, $this->chunkSize);
-        } return $out;
+        }
+        return $out;
     }
+
+    /**
+     * @param string $text
+     * @param int $length
+     * @return string
+     */
     private function overlapSuffix(string $text, int $length): string
     {
         if ($length === 0) {
             return '';
-        } $suffix = mb_substr($text, -$length);
+        }
+        $suffix = mb_substr($text, -$length);
         $space = mb_strpos($suffix, ' ');
         return trim($space === false ? $suffix : mb_substr($suffix, $space + 1));
     }

@@ -24,7 +24,7 @@ final class PgVectorIntegrationTest extends TestCase
             self::markTestSkipped('Set CONTEXT_ENGINE_RUN_PGVECTOR_TESTS=1 to enable pgvector integration tests.');
         }
         $host = (string)(getenv('CONTEXT_ENGINE_PGVECTOR_HOST') ?: '127.0.0.1');
-        $port = (int)(getenv('CONTEXT_ENGINE_PGVECTOR_PORT') ?: 54329);
+        $port = (int)(getenv('CONTEXT_ENGINE_PGVECTOR_PORT') ?: 54339);
         $database = (string)(getenv('CONTEXT_ENGINE_PGVECTOR_DATABASE') ?: 'context_engine');
         $user = (string)(getenv('CONTEXT_ENGINE_PGVECTOR_USERNAME') ?: 'context_engine');
         $password = (string)(getenv('CONTEXT_ENGINE_PGVECTOR_PASSWORD') ?: 'context_engine');
@@ -45,17 +45,17 @@ final class PgVectorIntegrationTest extends TestCase
     }
     public function testPersistenceSearchScopeSpaceAndIdempotency(): void
     {
-        $spaceA = new EmbeddingSpace('fake', 'model', 3, 'a');
-        $spaceB = new EmbeddingSpace('fake', 'model', 3, 'b');
+        $spaceA = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'a');
+        $spaceB = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'b');
         $this->store->storeBatch([
-            $this->embedded('shared', 'tenant-a', 'docs', $spaceA, [1,0,0]),
-            $this->embedded('shared', 'tenant-b', 'docs', $spaceA, [1,0,0]),
-            $this->embedded('shared', 'tenant-a', 'private', $spaceA, [1,0,0]),
+            $this->embedded('shared', 'tenant-a', 'docs', $spaceA, $this->vector(0)),
+            $this->embedded('shared', 'tenant-b', 'docs', $spaceA, $this->vector(0)),
+            $this->embedded('shared', 'tenant-a', 'private', $spaceA, $this->vector(0)),
         ]);
-        $this->store->storeBatch([$this->embedded('shared', 'tenant-a', 'docs', $spaceB, [0,1,0])]);
-        $this->store->storeBatch([$this->embedded('shared', 'tenant-a', 'docs', $spaceA, [1,0,0])]);
+        $this->store->storeBatch([$this->embedded('shared', 'tenant-a', 'docs', $spaceB, $this->vector(1))]);
+        $this->store->storeBatch([$this->embedded('shared', 'tenant-a', 'docs', $spaceA, $this->vector(0))]);
         self::assertSame(4, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE chunk_id='shared'")->fetchColumn(), 'Tenant, collection, and vector space must create independent identities while an identical upsert stays idempotent.');
-        $results = $this->store->search(new VectorSearchQuery('tenant-a', new Embedding([1,0,0], $spaceA), collection:'docs'));
+        $results = $this->store->search(new VectorSearchQuery('tenant-a', new Embedding($this->vector(0), $spaceA), collection:'docs'));
         self::assertCount(1, $results);
         self::assertSame('shared', $results[0]->chunk->id);
         self::assertSame('tenant-a', $results[0]->chunk->tenantId);
@@ -63,10 +63,10 @@ final class PgVectorIntegrationTest extends TestCase
     }
     public function testPlainInsertWorksWithoutSequenceOrTechnicalId(): void
     {
-        $space = new EmbeddingSpace('fake', 'model', 3, 'plain');
+        $space = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'plain');
         $this->query->insert('context_chunks', [
             'chunk_id' => 'plain', 'document_id' => 'doc', 'tenant_id' => 'tenant', 'collection' => 'docs', 'status' => 'active', 'content' => 'plain insert', 'position' => 0, 'metadata' => '{}',
-            'embedding' => new Vector([1,0,0], 3), 'embedding_provider' => $space->provider, 'embedding_model' => $space->model, 'embedding_dimensions' => 3, 'embedding_revision' => $space->revision, 'embedding_space_fingerprint' => $space->fingerprint(),
+            'embedding' => new Vector($this->vector(0), 1024), 'embedding_provider' => $space->provider, 'embedding_model' => $space->model, 'embedding_dimensions' => 1024, 'embedding_revision' => $space->revision, 'embedding_space_fingerprint' => $space->fingerprint(),
         ]);
         $this->query->execute();
         self::assertSame(1, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE chunk_id='plain'")->fetchColumn());
@@ -82,6 +82,13 @@ final class PgVectorIntegrationTest extends TestCase
     private function embedded(string $id, string $tenant, string $collection, EmbeddingSpace $space, array $values): EmbeddedChunk
     {
         return new EmbeddedChunk(new Chunk($id, 'doc', $tenant, "content-$id", 0, [], $collection), new Embedding($values, $space));
+    }
+    /** @return list<float> */
+    private function vector(int $axis): array
+    {
+        $values = array_fill(0, 1024, 0.0);
+        $values[$axis] = 1.0;
+        return $values;
     }
     private function missingColumns(): array
     {

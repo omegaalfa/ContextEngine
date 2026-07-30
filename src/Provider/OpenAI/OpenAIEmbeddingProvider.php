@@ -15,23 +15,47 @@ use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 final readonly class OpenAIEmbeddingProvider implements EmbeddingProvider
 {
     private JsonClient $http;
+
+    /**
+     * @param string $apiKey
+     * @param string $model
+     * @param int $dimensions
+     * @param AsyncHttpClient $client
+     * @param string $baseUrl
+     */
     public function __construct(string $apiKey, public string $model = 'text-embedding-3-small', private int $dimensions = 1536, AsyncHttpClient $client = new AsyncHttpClient(), private string $baseUrl = 'https://api.openai.com/v1')
     {
         $this->http = new JsonClient($client->withBearerToken($apiKey));
     }
+
+    /**
+     * @return EmbeddingSpace
+     */
     public function space(): EmbeddingSpace
     {
         return new EmbeddingSpace('openai', $this->model, $this->dimensions, '1', ['dimensions' => $this->dimensions]);
     }
+
+    /**
+     * @param string $text
+     * @param string $tenantId
+     * @return Embedding
+     */
     public function embed(string $text, string $tenantId): Embedding
     {
         return $this->embedBatch(new EmbeddingBatchRequest($tenantId, [$text], $this->space()))[0];
     }
+
+    /**
+     * @param EmbeddingBatchRequest $request
+     * @return array|Embedding[]
+     */
     public function embedBatch(EmbeddingBatchRequest $request): array
     {
         if ($request->expectedSpace->fingerprint() !== $this->space()->fingerprint()) {
             throw new ProviderException('Requested embedding space is incompatible with OpenAI provider.');
-        } $input = $request->texts;
+        }
+        $input = $request->texts;
         $response = $this->http->post($this->baseUrl . '/embeddings', ['model' => $this->model, 'input' => $input, 'dimensions' => $this->dimensions]);
         $data = $response['data'] ?? null;
         if (!is_array($data) || count($data) !== count($input)) {
@@ -42,10 +66,12 @@ final readonly class OpenAIEmbeddingProvider implements EmbeddingProvider
             $raw = is_array($item) ? ($item['embedding'] ?? null) : null;
             if (!is_array($raw)) {
                 throw new ProviderException('OpenAI embedding response is missing data.');
-            } $values = [];
+            }
+            $values = [];
             foreach ($raw as $value) {
                 $values[] = $value;
-            } $result[] = new Embedding($values, $this->space());
+            }
+            $result[] = new Embedding($values, $this->space());
         }
         return $result;
     }

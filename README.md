@@ -169,11 +169,11 @@ foreach ($answer->sources as $source) {
 
 ## 🧩 Infraestrutura incluída
 
-- **Embeddings:** `OpenAIEmbeddingProvider` e `OllamaEmbeddingProvider`.
+- **Embeddings:** `OpenAIEmbeddingProvider` e `OllamaEmbeddingProvider`; o schema fornecido está preparado para `bge-m3`/1024 via Ollama.
 - **LLM:** `OpenAILanguageModel`, com resposta buffered.
 - **Store:** `PgVectorStore` via `omegaalfa/query-builder`.
 - **Cache:** `CachedEmbeddingProvider` e `CachedLanguageModel`, ambos PSR-16.
-- **Concorrência:** `FiberBatchEmbeddingExecutor`, sem `Future` na API pública.
+- **Concorrência:** `FiberBatchEmbeddingExecutor`, sem `Future` na API pública. Providers baseados em `AsyncHttpClient` compartilham com o executor uma única instância de `FiberEventLoop` criada no bootstrap.
 - **Streaming:** contrato independente, sem provider incremental incluído atualmente.
 
 Gemini e outros fornecedores podem ser integrados implementando os contratos públicos; nenhum adapter Gemini está incluído hoje.

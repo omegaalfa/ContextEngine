@@ -15,7 +15,7 @@ final class RedisCacheIntegrationTest extends TestCase
         }
         try {
             $redis = new \Redis();
-            $connected = $redis->connect((string)(getenv('CONTEXT_ENGINE_REDIS_HOST') ?: '127.0.0.1'), (int)(getenv('CONTEXT_ENGINE_REDIS_PORT') ?: 63799), 2.0);
+            $connected = $redis->connect((string)(getenv('CONTEXT_ENGINE_REDIS_HOST') ?: '127.0.0.1'), (int)(getenv('CONTEXT_ENGINE_REDIS_PORT') ?: 63809), 2.0);
             $authenticated = $redis->auth((string)(getenv('CONTEXT_ENGINE_REDIS_PASSWORD') ?: 'context_engine'));
         } catch (\Throwable $e) {
             self::fail('Redis integration is enabled but service/configuration is unavailable: '.$e->getMessage());

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Ingestion;
 
-use Omegaalfa\ContextEngine\Contract\{BatchEmbeddingExecutor,DocumentLoader};
+use Omegaalfa\ContextEngine\Contract\{BatchEmbeddingExecutor, DocumentLoader};
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Contract\TextSplitter;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
@@ -15,7 +15,28 @@ use Omegaalfa\ContextEngine\Support\Batcher;
 
 final readonly class IngestionPipeline
 {
-    public function __construct(private TextSplitter $splitter, private EmbeddingProvider $embeddings, private VectorStore $store, private int $batchSize = 32, private Batcher $batcher = new Batcher(), private BatchEmbeddingExecutor $executor = new FiberBatchEmbeddingExecutor()) {}
+    /**
+     * @param TextSplitter $splitter
+     * @param EmbeddingProvider $embeddings
+     * @param VectorStore $store
+     * @param int $batchSize
+     * @param Batcher $batcher
+     * @param BatchEmbeddingExecutor $executor
+     */
+    public function __construct(
+        private TextSplitter           $splitter,
+        private EmbeddingProvider      $embeddings,
+        private VectorStore            $store,
+        private int                    $batchSize = 32,
+        private Batcher                $batcher = new Batcher(),
+        private BatchEmbeddingExecutor $executor = new FiberBatchEmbeddingExecutor())
+    {
+    }
+
+    /**
+     * @param DocumentLoader $loader
+     * @return IngestionReport
+     */
     public function ingest(DocumentLoader $loader): IngestionReport
     {
         $persistedBatches = 0;
@@ -51,12 +72,48 @@ final readonly class IngestionPipeline
             $completed = count($e->completed);
             $sent = array_sum($e->chunkCounts);
             $produced = $chunksProduced + $sent;
-            $report = new IngestionReport($batchesPlanned + $started, $batchesPlanned + $started, $completedBatches + $completed, $persistedBatches, count($e->discarded), $produced, $produced, $persistedChunks, $e->getPrevious()?->getMessage() ?? $e->getMessage(), array_values(array_unique([$e->failedSequence, ...$e->discarded])), false);
+            $report = new IngestionReport(
+                $batchesPlanned + $started,
+                $batchesPlanned + $started,
+                $completedBatches + $completed, $persistedBatches, count($e->discarded), $produced, $produced, $persistedChunks,
+                $e->getPrevious()?->getMessage() ?? $e->getMessage(), array_values(array_unique([$e->failedSequence, ...$e->discarded])),
+                false
+            );
             throw new IngestionException($report, $currentDocument, $this->embeddings->space(), $e->failedSequence, $e->getPrevious() ?? $e);
         } catch (\Throwable $e) {
-            $report = new IngestionReport($batchesPlanned, $batchesPlanned, $completedBatches, $persistedBatches, 0, $chunksProduced, $chunksProduced, $persistedChunks, $e->getMessage(), [], false);
-            throw new IngestionException($report, $currentDocument, $this->embeddings->space(), max(0, $batchesPlanned - 1), $e);
+            $report = new IngestionReport(
+                $batchesPlanned,
+                $batchesPlanned,
+                $completedBatches,
+                $persistedBatches,
+                0,
+                $chunksProduced,
+                $chunksProduced,
+                $persistedChunks,
+                $e->getMessage(),
+                [],
+                false
+            );
+            throw new IngestionException(
+                $report,
+                $currentDocument,
+                $this->embeddings->space(),
+                max(0, $batchesPlanned - 1),
+                $e
+            );
         }
-        return new IngestionReport($batchesPlanned, $batchesPlanned, $completedBatches, $persistedBatches, 0, $chunksProduced, $chunksProduced, $persistedChunks, null, [], true);
+        return new IngestionReport(
+            $batchesPlanned,
+            $batchesPlanned,
+            $completedBatches,
+            $persistedBatches,
+            0,
+            $chunksProduced,
+            $chunksProduced,
+            $persistedChunks,
+            null,
+            [],
+            true
+        );
     }
 }

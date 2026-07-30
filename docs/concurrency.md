@@ -8,15 +8,28 @@
 declare(strict_types=1);
 
 use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
+use Omegaalfa\FiberEventLoop\FiberEventLoop;
+use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 
-$serial = new FiberBatchEmbeddingExecutor(concurrency: 1);
-$balanced = new FiberBatchEmbeddingExecutor(concurrency: 5);
-$aggressive = new FiberBatchEmbeddingExecutor(concurrency: 20);
+$eventLoop = new FiberEventLoop();
+$httpClient = new AsyncHttpClient($eventLoop);
+$batchExecutor = new FiberBatchEmbeddingExecutor(
+    loop: $eventLoop,
+    concurrency: 5,
+);
+```
+
+O provider deve receber `$httpClient`, e a pipeline deve receber `$batchExecutor`. Essa identidade de instância é obrigatória: dois loops independentes não coordenam os mesmos fibers e podem fazer `ingest()` permanecer aguardando indefinidamente.
+
+```text
+FiberEventLoop compartilhado
+├── AsyncHttpClient → EmbeddingProvider
+└── FiberBatchEmbeddingExecutor → IngestionPipeline
 ```
 
 O argumento real chama-se `concurrency`, não `window`. Deve ser positivo. O executor inicia no máximo essa quantidade de lotes, cada um com sequence própria. Mesmo quando operações terminam fora de ordem, os resultados são entregues associados à sequence/chunks corretos e, na implementação atual, consumidos na ordem da janela.
 
-`Future` e `FiberEventLoop` são detalhes internos desse namespace. Contratos, domínio, providers públicos e `RagPipeline` retornam tipos síncronos/iterables.
+`Future` continua totalmente interno. O `FiberEventLoop` é visto apenas pelo composition root e pela infraestrutura concreta; contratos, domínio, providers públicos e `RagPipeline` retornam tipos síncronos/iterables.
 
 Após falha, a janela é drenada e resultados posteriores descartados. O executor não conhece banco; o pipeline persiste cada resultado serialmente.
 

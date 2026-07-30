@@ -121,7 +121,7 @@ O construtor recebe splitter, provider, store, tamanho do lote, `Batcher` e exec
 - `IngestionReport`: documentos/chunks, lotes iniciados/concluídos/persistidos, sequências persistidas/descartadas e estado completo/parcial. Métodos `empty()` e `with*()` criam novas instâncias.
 - `BatchEmbeddingResult`: valida sequência, tipos e cardinalidade entre chunks e embeddings.
 - `BatchWindowException`: informa lote que falhou e sequências iniciadas, concluídas e descartadas.
-- `FiberBatchEmbeddingExecutor(int $concurrency = 4)`: janela limitada; cada resultado mantém sequência e chunks originais mesmo fora de ordem.
+- `FiberBatchEmbeddingExecutor(FiberEventLoop $loop = new FiberEventLoop(), int $concurrency = 4)`: janela limitada; cada resultado mantém sequência e chunks originais mesmo fora de ordem. Com provider baseado em `AsyncHttpClient`, injete no cliente a mesma instância de loop usada pelo executor.
 
 ## ◎ Retrieval e RAG
 

@@ -11,7 +11,13 @@ use Omegaalfa\HttpClient\Http\Response;
 
 final readonly class JsonClient
 {
-    public function __construct(private AsyncHttpClient $client) {}
+    /**
+     * @param AsyncHttpClient $client
+     */
+    public function __construct(private AsyncHttpClient $client)
+    {
+    }
+
     /**
      * @param array<string,mixed> $payload
      * @return array<string,mixed>
@@ -25,6 +31,7 @@ final readonly class JsonClient
         }
         return $this->decode($response);
     }
+
     /** @return array<string,mixed> */
     private function decode(Response $response): array
     {
@@ -43,7 +50,9 @@ final readonly class JsonClient
         foreach ($data as $key => $value) {
             if (!is_string($key)) {
                 throw new ProviderException('Provider JSON object has an invalid key.');
-            } $object[$key] = $value;
-        } return $object;
+            }
+            $object[$key] = $value;
+        }
+        return $object;
     }
 }

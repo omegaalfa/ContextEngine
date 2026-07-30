@@ -25,7 +25,6 @@ ingest(DocumentLoader $loader): IngestionReport
 
 declare(strict_types=1);
 
-use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Loader\TextFileLoader;
 use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
@@ -35,7 +34,7 @@ $ingestion = new IngestionPipeline(
     embeddings: $embeddingProvider,
     store: $vectorStore,
     batchSize: 24,
-    executor: new FiberBatchEmbeddingExecutor(concurrency: 4),
+    executor: $batchExecutor,
 );
 
 $report = $ingestion->ingest(
@@ -44,6 +43,8 @@ $report = $ingestion->ingest(
 ```
 
 O pipeline nunca materializa todos os chunks: o `Batcher` produz listas não vazias, inclusive o último lote incompleto. Cada resultado deve ter a mesma cardinalidade e ordem do request e pertencer ao espaço declarado pelo provider. Persistência ocorre serialmente depois da validação e fora das chamadas HTTP.
+
+No exemplo, `$batchExecutor` foi composto no bootstrap. Se `$embeddingProvider` usa `AsyncHttpClient`, crie um único `FiberEventLoop` e injete-o tanto no cliente quanto no `FiberBatchEmbeddingExecutor`. Consulte [Concorrência e backpressure](concurrency.md).
 
 ## IngestionReport
 

@@ -293,13 +293,24 @@ Tenant e collection participam porque `chunk_id` não é assumido global entre t
 
 `RetrievalPolicy` define limite, `VectorMetric` e distância máxima opcional. A métrica pertence ao ContextEngine; o store a traduz para o enum do QueryBuilder. O SQL filtra tenant, status, provider, model, dimensions, revision, fingerprint e collection quando definida. Assim, vetores incompatíveis nem chegam à memória.
 
-O schema de integração usa `vector(3)` para testes determinísticos. Uma aplicação deve provisionar a dimensão adequada ao provider. Índices B-tree apoiam filtros de tenant/collection/status/espaço, enquanto índices HNSW por métrica aceleram nearest-neighbor em produção. A escolha exata depende da distribuição e volume; consulte [schema](database-schema.md) e [performance](performance.md).
+O schema de integração/desenvolvimento usa `vector(1024)` para o BGE-M3 via Ollama. Índices B-tree apoiam filtros de tenant/collection/status/espaço, enquanto o HNSW incluído atende à métrica cosseno. Outro modelo ou métrica pode exigir schema/índice correspondente; consulte [schema](database-schema.md) e [performance](performance.md).
 
 ## 8. Concorrência
 
 Concorrência é política de execução da ingestão, não propriedade do embedding ou do domínio. Ela fica em `Infrastructure` porque depende de FiberEventLoop e de seu `Future`.
 
 `BatchEmbeddingExecutor` existe para que `IngestionPipeline` possa solicitar “execute estes lotes” sem conhecer fibers. A implementação padrão cria uma janela limitada, inicia até `concurrency` operações HTTP, aguarda e valida cada lote, emite resultados para persistência serial e só então avança para a próxima janela.
+
+Na composição concreta atual, o `AsyncHttpClient` usado pelo provider e o `FiberBatchEmbeddingExecutor` devem receber **a mesma instância** de `FiberEventLoop`. O loop compartilhado coordena tanto a operação HTTP quanto o fiber que aguarda seu resultado. Loops independentes podem produzir uma espera indefinida em `ingest()`.
+
+```text
+Composition root
+└── FiberEventLoop compartilhado
+    ├── AsyncHttpClient → provider de embeddings
+    └── FiberBatchEmbeddingExecutor → IngestionPipeline
+```
+
+Isso não torna o event loop parte do domínio. A aplicação o manipula apenas ao montar adaptadores concretos de infraestrutura.
 
 `Future` nunca aparece na API pública porque:
 

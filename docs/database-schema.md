@@ -14,10 +14,10 @@ CREATE TABLE context_chunks (
     content text NOT NULL,
     position integer NOT NULL CHECK (position >= 0),
     metadata jsonb NOT NULL DEFAULT '{}',
-    embedding vector(1536) NOT NULL,
+    embedding vector(1024) NOT NULL,
     embedding_provider text NOT NULL,
     embedding_model text NOT NULL,
-    embedding_dimensions integer NOT NULL CHECK (embedding_dimensions = 1536),
+    embedding_dimensions integer NOT NULL CHECK (embedding_dimensions = 1024),
     embedding_revision text NOT NULL CHECK (embedding_revision <> ''),
     embedding_space_fingerprint text NOT NULL CHECK (embedding_space_fingerprint <> ''),
     PRIMARY KEY (tenant_id, collection, chunk_id, embedding_space_fingerprint)
@@ -29,6 +29,10 @@ CREATE INDEX context_chunks_scope_idx ON context_chunks
 
 Não há timestamps no schema atual porque o store não fornece esses valores. Adicioná-los exige defaults no banco ou evolução explícita do contrato/schema.
 
-Na fixture rápida, `vector(3)` e check `= 3` reduzem custo. A aplicação deve escolher uma dimensão compatível com o provider/modelo confirmado e repetir o mesmo número na coluna, no check e no `EmbeddingSpace`. Misturar dimensões na mesma coluna `vector(n)` falha no banco; espaços diferentes com a mesma dimensão podem coexistir.
+O schema fornecido está configurado para `OllamaEmbeddingProvider(model: 'bge-m3', dimensions: 1024)`. O BGE-M3 produz embeddings densos de 1024 dimensões. Misturar outra dimensão na mesma coluna `vector(n)` falha no banco; espaços diferentes com 1024 dimensões ainda podem coexistir pela identidade completa.
+
+Para essa configuração, provider/model/dimensions/revision são `ollama`, `bge-m3`, `1024` e `1`. Não calcule o fingerprint concatenando esses textos manualmente: use `$provider->space()->fingerprint()`, pois `EmbeddingSpace` aplica a canonicalização determinística oficial e inclui `parameters`.
+
+Além do índice de escopo, a fixture cria um índice por documento/posição e um HNSW com `vector_cosine_ops`. Este último acelera a métrica cosseno; outras métricas expostas pela API podem exigir índice correspondente conforme a carga.
 
 A PK composta é maior que uma chave surrogate, mas elimina identidade técnica sem uso. O índice de scope duplica parcialmente tenant/collection/fingerprint porque seu padrão de acesso inclui status e omite chunk ID.

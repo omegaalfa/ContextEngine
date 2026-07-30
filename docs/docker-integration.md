@@ -43,7 +43,7 @@ Somente pgvector:
 docker compose --env-file .env.example --profile integration up -d --wait pgvector
 ```
 
-Portas padrão: PostgreSQL `54329`, Redis `63799`. Em colisão:
+Portas padrão: PostgreSQL `54339`, Redis `63809`. Em colisão:
 
 ```bash
 CONTEXT_ENGINE_PGVECTOR_PORT=54339 \

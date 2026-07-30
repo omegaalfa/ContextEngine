@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${CONTEXT_ENGINE_PGVECTOR_USERNAME:?Define CONTEXT_ENGINE_PGVECTOR_USERNAME in .env}
       POSTGRES_PASSWORD: ${CONTEXT_ENGINE_PGVECTOR_PASSWORD:?Define CONTEXT_ENGINE_PGVECTOR_PASSWORD in .env}
     ports:
-      - "${CONTEXT_ENGINE_PGVECTOR_PORT:-54329}:5432"
+      - "${CONTEXT_ENGINE_PGVECTOR_PORT:-54339}:5432"
     volumes:
       - context_engine_pgvector_data:/var/lib/postgresql/data
       - ./tests/Integration/Fixtures/postgresql/schema.sql:/docker-entrypoint-initdb.d/10-context-engine.sql:ro
@@ -28,7 +28,7 @@ services:
       REDIS_PASSWORD: ${CONTEXT_ENGINE_REDIS_PASSWORD:?Define CONTEXT_ENGINE_REDIS_PASSWORD in .env}
     command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
     ports:
-      - "${CONTEXT_ENGINE_REDIS_PORT:-63799}:6379"
+      - "${CONTEXT_ENGINE_REDIS_PORT:-63809}:6379"
     volumes:
       - context_engine_redis_data:/data
     healthcheck:

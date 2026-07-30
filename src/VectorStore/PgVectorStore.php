@@ -19,7 +19,22 @@ use Omegaalfa\QueryBuilder\QueryBuilder;
 
 final readonly class PgVectorStore implements VectorStore
 {
-    public function __construct(private QueryBuilder $query, private PgVectorSchema $schema = new PgVectorSchema()) {}
+    /**
+     * @param QueryBuilder $query
+     * @param PgVectorSchema $schema
+     */
+    public function __construct(private QueryBuilder $query, private PgVectorSchema $schema = new PgVectorSchema())
+    {
+    }
+
+    /**
+     * @param array $chunks
+     * @return void
+     * @throws JsonException
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\DatabaseException
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\QueryException
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\UnsupportedDatabaseFeatureException
+     */
     public function storeBatch(array $chunks): void
     {
         $first = $chunks[0]->embedding;
@@ -34,6 +49,14 @@ final readonly class PgVectorStore implements VectorStore
         $this->query->insertBatch($this->schema->table, $rows)->onConflict([$this->schema->tenantId, $this->schema->collection, $this->schema->chunkId, $this->schema->embeddingFingerprint])->doUpdate([$this->schema->content, $this->schema->metadata, $this->schema->status, $this->schema->embedding]);
         $this->query->execute();
     }
+
+    /**
+     * @param VectorSearchQuery $query
+     * @return array|VectorSearchResult[]
+     * @throws JsonException
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\DatabaseException
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\QueryException
+     */
     public function search(VectorSearchQuery $query): array
     {
         $space = $query->embedding->space;
@@ -52,11 +75,11 @@ final readonly class PgVectorStore implements VectorStore
         $result = $this->query->execute(false);
         $found = [];
         foreach ($result->data as $row) {
-            $distance = (float) $row['distance'];
+            $distance = (float)$row['distance'];
             if ($query->policy->maximumDistance !== null && $distance > $query->policy->maximumDistance) {
                 continue;
             }
-            $decoded = json_decode((string) $row[$this->schema->metadata], true, flags: JSON_THROW_ON_ERROR);
+            $decoded = json_decode((string)$row[$this->schema->metadata], true, flags: JSON_THROW_ON_ERROR);
             $metadata = [];
             if (is_array($decoded)) {
                 foreach ($decoded as $key => $value) {
@@ -65,7 +88,7 @@ final readonly class PgVectorStore implements VectorStore
                     }
                 }
             }
-            $chunk = new Chunk((string) $row[$this->schema->chunkId], (string) $row[$this->schema->documentId], (string) $row[$this->schema->tenantId], (string) $row[$this->schema->content], (int) $row[$this->schema->position], $metadata, (string) $row[$this->schema->collection], (string) $row[$this->schema->status]);
+            $chunk = new Chunk((string)$row[$this->schema->chunkId], (string)$row[$this->schema->documentId], (string)$row[$this->schema->tenantId], (string)$row[$this->schema->content], (int)$row[$this->schema->position], $metadata, (string)$row[$this->schema->collection], (string)$row[$this->schema->status]);
             $found[] = new VectorSearchResult($chunk, $distance);
         }
         return $found;

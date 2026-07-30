@@ -11,7 +11,17 @@ use RuntimeException;
 
 final readonly class TextFileLoader implements DocumentLoader
 {
-    public function __construct(private string $path, private string $tenantId) {}
+    /**
+     * @param string $path
+     * @param string $tenantId
+     */
+    public function __construct(private string $path, private string $tenantId)
+    {
+    }
+
+    /**
+     * @return Generator
+     */
     public function load(): Generator
     {
         $handle = @fopen($this->path, 'rb');
@@ -36,6 +46,12 @@ final readonly class TextFileLoader implements DocumentLoader
             fclose($handle);
         }
     }
+
+    /**
+     * @param string $content
+     * @param int $index
+     * @return Document
+     */
     private function document(string $content, int $index): Document
     {
         return new Document(hash('sha256', $this->path . ':' . $index), $this->tenantId, $content, ['source' => $this->path]);

@@ -483,8 +483,8 @@ php -m | grep -E 'PDO|pdo_pgsql|sockets'
 
 ### Escolha para embeddings
 
-- OpenAI: internet e chave; este guia usa `text-embedding-3-small`, 1.536 dimensões.
-- Ollama: serviço ativo, modelo instalado e dimensão conhecida.
+- Ollama: este guia usa `bge-m3`, com 1024 dimensões, e exige o serviço/modelo ativos.
+- OpenAI: alternativa incluída que exige internet e chave; seu padrão usa 1.536 dimensões e requer outro schema.
 - Gemini ou outro serviço: implementação própria de `EmbeddingProvider`, enquanto não houver adapter oficial.
 
 Para a resposta final, a implementação incluída é `OpenAILanguageModel`. Qualquer integração própria — incluindo Gemini — pode ser usada se implementar `LanguageModel`. Redis, Docker, `omegaalfa/collection` e `omegaalfa/lazy-object` são opcionais.
@@ -561,10 +561,10 @@ CREATE TABLE IF NOT EXISTS context_chunks (
     content text NOT NULL,
     position integer NOT NULL CHECK (position >= 0),
     metadata jsonb NOT NULL DEFAULT '{}',
-    embedding vector(1536) NOT NULL,
+    embedding vector(1024) NOT NULL,
     embedding_provider text NOT NULL,
     embedding_model text NOT NULL,
-    embedding_dimensions integer NOT NULL CHECK (embedding_dimensions = 1536),
+    embedding_dimensions integer NOT NULL CHECK (embedding_dimensions = 1024),
     embedding_revision text NOT NULL CHECK (embedding_revision <> ''),
     embedding_space_fingerprint text NOT NULL CHECK (embedding_space_fingerprint <> ''),
     CONSTRAINT context_chunks_identity PRIMARY KEY (
@@ -578,11 +578,11 @@ CREATE INDEX IF NOT EXISTS context_chunks_scope_idx ON context_chunks
 
 A chave composta impede duplicação da mesma versão no mesmo escopo. Texto e metadata permanecem ao lado do embedding.
 
-> A fixture oficial usa `vector(3)` apenas nos testes. O schema acima foi adaptado ao padrão OpenAI de 1.536. Para outro modelo, ajuste ambos os números antes de criar a tabela.
+> O schema oficial e o exemplo usam `bge-m3` com `vector(1024)`. Para outro modelo, confirme a dimensão e ajuste coluna, check, provider e estratégia de migração antes de ingerir dados.
 
 ## 🐳 9. Opção com Docker
 
-O compose do repositório inicia pgvector em `localhost:54329` e Redis em `localhost:63799`:
+O compose do repositório inicia pgvector em `localhost:54339` e Redis em `localhost:63809`:
 
 ```bash
 cp .env.example .env
@@ -591,7 +591,7 @@ docker compose --env-file .env --profile integration ps
 docker compose --env-file .env --profile integration down
 ```
 
-Docker não é obrigatório. Esse compose monta a fixture `vector(3)` e é determinístico para testes, não para o exemplo OpenAI. Uma aplicação real deve manter seu compose/schema de 1.536 dimensões. O SQL de inicialização só roda quando o volume é criado.
+Docker não é obrigatório. O compose monta o schema `vector(1024)` compatível com o BGE-M3. O SQL de inicialização só roda quando o volume é criado; um volume inicializado com schema anterior precisa ser recriado ou migrado conscientemente.
 
 ## 🤖 10. Escolhendo providers
 
@@ -661,27 +661,26 @@ Cada peça abaixo participa de uma etapa do fluxo. Os objetos concretos OpenAI s
 
 ### 11.1 Cliente HTTP e event loop
 
-O cliente envia JSON aos providers; o event loop permite concorrência controlada. Ambos poderiam usar os valores padrão dos construtores, mas aparecem explicitamente para facilitar o entendimento.
+O cliente envia JSON aos providers; o event loop coordena as operações HTTP concorrentes. Quando um provider baseado em `AsyncHttpClient` é usado pelo `FiberBatchEmbeddingExecutor`, os dois componentes **devem receber a mesma instância** de `FiberEventLoop`.
 
 ```php
 use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 
-$http = new AsyncHttpClient();
 $eventLoop = new FiberEventLoop();
+$http = new AsyncHttpClient($eventLoop);
 ```
 
-Resultado: dois objetos de infraestrutura. Sua aplicação nunca recebe um `Future`.
+Resultado: um único scheduler coordena o cliente e, mais adiante, o executor. Criar loops independentes pode deixar `IngestionPipeline::ingest()` aguardando uma operação que pertence ao outro loop. O loop aparece somente na composição da infraestrutura; contratos, domínio e retornos continuam sem `Future`.
 
 ### 11.2 Provider de embeddings e espaço
 
 ```php
-use Omegaalfa\ContextEngine\Provider\OpenAI\OpenAIEmbeddingProvider;
+use Omegaalfa\ContextEngine\Provider\Ollama\OllamaEmbeddingProvider;
 
-$embeddingProvider = new OpenAIEmbeddingProvider(
-    apiKey: $openAiKey,
-    model: 'text-embedding-3-small',
-    dimensions: 1536,
+$embeddingProvider = new OllamaEmbeddingProvider(
+    model: 'bge-m3',
+    dimensions: 1024,
     client: $http,
 );
 $space = $embeddingProvider->space();
@@ -782,11 +781,11 @@ O modelo retorna resposta completa e não implementa streaming incremental.
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
 
 $space = new EmbeddingSpace(
-    provider: 'openai',
-    model: 'text-embedding-3-small',
-    dimensions: 1536,
+    provider: 'ollama',
+    model: 'bge-m3',
+    dimensions: 1024,
     revision: '1',
-    parameters: ['dimensions' => 1536],
+    parameters: [],
 );
 echo $space->fingerprint();
 ```
@@ -961,7 +960,7 @@ O ID do loader depende de caminho + índice do bloco. Reorganizar parágrafos po
 
 Mudar provider, modelo, dimensão, revisão ou parâmetro semântico muda o fingerprint. Versões antigas e novas podem coexistir e não se misturam na busca.
 
-Uma coluna `vector(1536)` rejeita outra dimensão. Modelos com dimensões distintas exigem schema/tabelas compatíveis; o fingerprint resolve identidade lógica, não muda o tipo físico da coluna.
+Uma coluna `vector(1024)` rejeita outra dimensão. Modelos com dimensões distintas exigem schema/tabelas compatíveis; o fingerprint resolve identidade lógica, não muda o tipo físico da coluna.
 
 ## 🚨 24. Tratamento de erros
 
@@ -1027,7 +1026,7 @@ Em produção, mantenha a montagem principal dependente dos contratos. A funçã
 ```php
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
-use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
+use Omegaalfa\ContextEngine\Contract\BatchEmbeddingExecutor;
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
@@ -1036,7 +1035,6 @@ use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
 use Omegaalfa\ContextEngine\Retrieval\VectorMetric;
 use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
 use Omegaalfa\ContextEngine\VectorStore\PgVectorStore;
-use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use Omegaalfa\QueryBuilder\QueryBuilder;
 
 /** @return array{ingestion: IngestionPipeline, rag: RagPipeline} */
@@ -1044,6 +1042,7 @@ function buildContextEngine(
     EmbeddingProvider $embeddings,
     LanguageModel $languageModel,
     QueryBuilder $queryBuilder,
+    BatchEmbeddingExecutor $batchExecutor,
 ): array {
     $store = new PgVectorStore($queryBuilder);
     $ingestion = new IngestionPipeline(
@@ -1051,10 +1050,7 @@ function buildContextEngine(
         embeddings: $embeddings,
         store: $store,
         batchSize: 16,
-        executor: new FiberBatchEmbeddingExecutor(
-            loop: new FiberEventLoop(),
-            concurrency: 4,
-        ),
+        executor: $batchExecutor,
     );
     $rag = new RagPipeline(
         retriever: new Retriever(
@@ -1074,7 +1070,9 @@ function buildContextEngine(
 }
 ```
 
-Se amanhã existirem `$geminiEmbeddings` e `$geminiLanguageModel` implementando os contratos, a chamada será simplesmente `buildContextEngine($geminiEmbeddings, $geminiLanguageModel, $queryBuilder)`. A engine não muda. Os adapters concretos pertencem ao bootstrap ou container de dependências da aplicação.
+O bootstrap da aplicação constrói `$batchExecutor` com o mesmo loop usado pelo cliente HTTP do provider e o entrega à função. Assim, essa fábrica permanece neutra quanto ao transporte e ao mecanismo de concorrência.
+
+Se amanhã existirem `$geminiEmbeddings` e `$geminiLanguageModel` implementando os contratos, a chamada será `buildContextEngine($geminiEmbeddings, $geminiLanguageModel, $queryBuilder, $batchExecutor)`. A engine não muda. Os adapters concretos pertencem ao bootstrap ou container de dependências da aplicação.
 
 ### Depois: um bootstrap executável com os adapters disponíveis
 
@@ -1105,7 +1103,7 @@ use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Loader\TextFileLoader;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
-use Omegaalfa\ContextEngine\Provider\OpenAI\OpenAIEmbeddingProvider;
+use Omegaalfa\ContextEngine\Provider\Ollama\OllamaEmbeddingProvider;
 use Omegaalfa\ContextEngine\Provider\OpenAI\OpenAILanguageModel;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
@@ -1129,11 +1127,11 @@ $env = static function (string $name): string {
 
 try {
     $key = $env('OPENAI_API_KEY');
-    $http = new AsyncHttpClient();
-    $embeddings = new OpenAIEmbeddingProvider(
-        apiKey: $key,
-        model: 'text-embedding-3-small',
-        dimensions: 1536,
+    $eventLoop = new FiberEventLoop();
+    $http = new AsyncHttpClient($eventLoop);
+    $embeddings = new OllamaEmbeddingProvider(
+        model: 'bge-m3',
+        dimensions: 1024,
         client: $http,
     );
 
@@ -1146,16 +1144,17 @@ try {
         password: $env('DB_PASSWORD'),
     );
     $store = new PgVectorStore(new QueryBuilder(new PDOConnection($settings)));
+    $batchExecutor = new FiberBatchEmbeddingExecutor(
+        loop: $eventLoop,
+        concurrency: 4,
+    );
 
     $ingestion = new IngestionPipeline(
         splitter: new RecursiveTextSplitter(chunkSize: 500, overlap: 75),
         embeddings: $embeddings,
         store: $store,
         batchSize: 16,
-        executor: new FiberBatchEmbeddingExecutor(
-            loop: new FiberEventLoop(),
-            concurrency: 4,
-        ),
+        executor: $batchExecutor,
     );
     $report = $ingestion->ingest(new TextFileLoader(
         __DIR__ . '/documents/politica-reembolso.txt',
