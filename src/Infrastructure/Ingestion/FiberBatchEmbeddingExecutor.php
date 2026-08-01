@@ -27,9 +27,8 @@ final readonly class FiberBatchEmbeddingExecutor implements BatchEmbeddingExecut
     }
 
     /**
-     * @param iterable<non-empty-list<Chunk>>
-     * $batches @return iterable<BatchEmbeddingResult>
-     * @return iterable
+     * @param iterable<non-empty-list<Chunk>> $batches
+     * @return iterable<BatchEmbeddingResult>
      */
     public function execute(iterable $batches, EmbeddingProvider $provider): iterable
     {
@@ -52,12 +51,12 @@ final readonly class FiberBatchEmbeddingExecutor implements BatchEmbeddingExecut
                 $sequence = $scheduled;
                 $request = new EmbeddingBatchRequest(
                     $chunks[0]->tenantId,
-                    array_map(static fn(Chunk $chunk): string => $chunk->content, $chunks),
+                    array_map(static fn (Chunk $chunk): string => $chunk->content, $chunks),
                     $provider->space(),
                     ['batch_sequence' => $sequence],
                 );
                 $window[$sequence] = [
-                    'future' => $this->loop->async(static fn(): array => $provider->embedBatch($request)),
+                    'future' => $this->loop->async(static fn (): array => $provider->embedBatch($request)),
                     'chunks' => $chunks,
                 ];
                 $scheduled++;

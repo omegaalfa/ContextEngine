@@ -14,6 +14,9 @@ use Omegaalfa\ContextEngine\Ingestion\{BatchEmbeddingResult,BatchWindowException
 use Omegaalfa\ContextEngine\Ingestion\BatchExecutionProgress;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
 use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
+use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
+use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
+use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
 use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use PHPUnit\Framework\TestCase;
 
@@ -29,6 +32,7 @@ final class IngestionPipelineTest extends TestCase
         };
         $provider = $this->provider();
         $store = new class () implements VectorStore {
+            use VectorStoreDeletionStubs;
             public function storeBatch(array $chunks): void
             {
                 throw new \LogicException('must not persist');
@@ -63,6 +67,7 @@ final class IngestionPipelineTest extends TestCase
             }
         };
         $store = new class () implements VectorStore {
+            use VectorStoreDeletionStubs;
             public array $sizes = [];
             public function storeBatch(array $chunks): void
             {
@@ -87,6 +92,7 @@ final class IngestionPipelineTest extends TestCase
         };
         $provider = $this->provider();
         $store = new class () implements VectorStore {
+            use VectorStoreDeletionStubs;
             public array $sizes = [];
             public function storeBatch(array $chunks): void
             {
@@ -110,6 +116,7 @@ final class IngestionPipelineTest extends TestCase
         };
         $provider = $this->provider();
         $store = new class () implements VectorStore {
+            use VectorStoreDeletionStubs;
             public int $persisted = 0;
             public function storeBatch(array $chunks): void
             {
@@ -147,6 +154,7 @@ final class IngestionPipelineTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
         new IngestionPipeline(new RecursiveTextSplitter(), $this->provider(), new class () implements VectorStore {
+            use VectorStoreDeletionStubs;
             public function storeBatch(array $chunks): void {}
             public function search(VectorSearchQuery $query): array
             {
@@ -164,6 +172,7 @@ final class IngestionPipelineTest extends TestCase
         };
         $provider = new SuspendingIngestionProvider();
         $store = new class () implements VectorStore {
+            use VectorStoreDeletionStubs;
             public function storeBatch(array $chunks): void
             {
                 throw new \RuntimeException('database host and SQL must stay private');
@@ -225,5 +234,21 @@ final class SuspendingIngestionProvider implements EmbeddingProvider
         \Fiber::suspend();
         $this->active--;
         return array_map(fn () => new Embedding([1], $this->space()), $request->texts);
+    }
+}
+
+trait VectorStoreDeletionStubs
+{
+    public function deleteChunk(ChunkDeleteQuery $query): int
+    {
+        return 0;
+    }
+    public function deleteDocument(DocumentDeleteQuery $query): int
+    {
+        return 0;
+    }
+    public function clearCollection(CollectionDeleteQuery $query): int
+    {
+        return 0;
     }
 }

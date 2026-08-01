@@ -161,7 +161,7 @@ Contém utilitários pequenos e sem estado: `Batcher` e `TextNormalizer`. Existe
 
 ### `VectorStore`
 
-Contém `PgVectorStore` e `PgVectorSchema`. Existe para adaptar a porta `VectorStore` ao QueryBuilder e ao pgvector. Depende de objetos de embedding/retrieval e da infraestrutura SQL. A ingestão e o retriever dependem somente do contrato, não desta pasta. Nunca deve vazar QueryBuilder, seus enums, `Vector`, PDO ou linhas cruas para o domínio.
+Contém `PgVectorStore`, `PgVectorSchema` e queries imutáveis de exclusão. Existe para adaptar a porta `VectorStore` ao QueryBuilder e ao pgvector e representar manutenção sem expor filtros SQL. Depende de objetos de embedding/retrieval e da infraestrutura SQL. A ingestão e o retriever dependem somente do contrato, não do adapter. Nunca deve vazar QueryBuilder, seus enums, `Vector`, PDO ou linhas cruas para o domínio.
 
 ## 3. Fluxo completo de ingestão
 
@@ -171,7 +171,7 @@ Document → Chunk(s) → lote(s) → embedding(s) → validação
 ```
 
 1. **Carregamento.** `IngestionPipeline::ingest()` recebe um `DocumentLoader`. `load()` entrega um `iterable<Document>`; portanto, uma implementação pode ler arquivos, filas ou APIs progressivamente.
-2. **Divisão.** Para cada `Document`, a pipeline chama `TextSplitter::split()`. `RecursiveTextSplitter` normaliza com `TextNormalizer`, cria conteúdo sobreposto e produz `Chunk` por generator. Tenant, collection, status e metadata seguem com o chunk.
+2. **Divisão.** Para cada `Document`, a pipeline chama `TextSplitter::split()`. `RecursiveTextSplitter` normaliza com `TextNormalizer`, percorre offsets sem lacunas, escolhe cortes semânticos dentro da janela e produz `Chunk` por generator. O próximo início é calculado como `fim - overlap`, preservando cobertura e ordem. Tenant, collection, status e metadata seguem com o chunk.
 3. **Batching.** `Batcher::batches()` consome o iterable somente conforme necessário. Ele preserva as chaves dentro do lote, produz o último lote incompleto e propaga exceções da origem.
 4. **Criação da janela.** `BatchEmbeddingExecutor::execute()` recebe os lotes. `FiberBatchEmbeddingExecutor` inicia no máximo `concurrency` lotes por janela. Para cada lote cria um `EmbeddingBatchRequest` com tenant, textos, espaço esperado e sequência.
 5. **Embeddings.** `EmbeddingProvider::embedBatch()` processa exatamente um lote. A concorrência não pertence ao provider. O provider retorna uma lista ordenada de `Embedding`.
@@ -294,6 +294,10 @@ Tenant e collection participam porque `chunk_id` não é assumido global entre t
 `RetrievalPolicy` define limite, `VectorMetric` e distância máxima opcional. A métrica pertence ao ContextEngine; o store a traduz para o enum do QueryBuilder. O SQL filtra tenant, status, provider, model, dimensions, revision, fingerprint e collection quando definida. Assim, vetores incompatíveis nem chegam à memória.
 
 O schema de integração/desenvolvimento usa `vector(1024)` para o BGE-M3 via Ollama. Índices B-tree apoiam filtros de tenant/collection/status/espaço, enquanto o HNSW incluído atende à métrica cosseno. Outro modelo ou métrica pode exigir schema/índice correspondente; consulte [schema](database-schema.md) e [performance](performance.md).
+
+### Exclusão
+
+O contrato separa `deleteChunk()`, `deleteDocument()` e `clearCollection()` para que uma omissão de filtro não se transforme em exclusão global. Tenant e collection são obrigatórios em todos os comandos. Chunk exige `EmbeddingSpace`; documento pode selecionar um espaço ou todas as suas versões; collection é apagada integralmente apenas por uma operação explicitamente nomeada. O retorno é sempre a quantidade de linhas afetadas.
 
 ## 8. Concorrência
 

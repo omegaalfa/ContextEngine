@@ -257,7 +257,7 @@ Mesmo representando a mesma palavra, os números vieram de mapas matemáticos di
 
 **Para que serve.** A aplicação precisa persistir o trabalho da ingestão e consultá-lo depois. Separar o contrato evita que domínio e pipelines dependam de SQL ou pgvector.
 
-**Como o ContextEngine usa.** `IngestionPipeline` chama `storeBatch()`; `Retriever` envia `VectorSearchQuery` para `search()`. A implementação incluída é `PgVectorStore`.
+**Como o ContextEngine usa.** `IngestionPipeline` chama `storeBatch()`; `Retriever` envia `VectorSearchQuery` para `search()`. A aplicação também pode remover um chunk, um documento ou esvaziar uma collection por queries com tenant obrigatório. A implementação incluída é `PgVectorStore`.
 
 ### PostgreSQL e pgvector
 
@@ -829,7 +829,7 @@ O loader aceita apenas caminho e tenant. Ele cria ID como SHA-256 de caminho + �
 
 ## ✂️ 15. Dividindo o documento
 
-`chunkSize: 500` limita aproximadamente o trecho a 500 caracteres. `overlap: 75` repete parte entre trechos para evitar cortar uma ideia exatamente na divisão.
+`chunkSize: 500` limita o trecho a no máximo 500 caracteres. `overlap: 75` repete exatamente os 75 caracteres finais no começo do trecho seguinte para evitar cortar uma ideia exatamente na divisão. O avanço por offsets garante que nenhum conteúdo normalizado fique entre duas janelas sem ser incluído.
 
 Chunks muito pequenos perdem contexto e aumentam chamadas. Chunks muito grandes misturam assuntos e ocupam mais prompt. O splitter usa generator, produzindo chunks conforme o consumo.
 

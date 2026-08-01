@@ -9,6 +9,7 @@ use JsonException;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
 use Omegaalfa\ContextEngine\Embedding\EmbeddedChunk;
+use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
 use Omegaalfa\ContextEngine\Exception\InvalidEmbeddingException;
 use Omegaalfa\ContextEngine\Retrieval\VectorMetric as ContextVectorMetric;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
@@ -24,7 +25,9 @@ final readonly class PgVectorStore implements VectorStore
      * @param QueryBuilder $query
      * @param PgVectorSchema $schema
      */
-    public function __construct(private QueryBuilder $query, private PgVectorSchema $schema = new PgVectorSchema()) {}
+    public function __construct(private QueryBuilder $query, private PgVectorSchema $schema = new PgVectorSchema())
+    {
+    }
 
     /**
      * @param list<EmbeddedChunk> $chunks
@@ -111,5 +114,72 @@ final readonly class PgVectorStore implements VectorStore
             $found[] = new VectorSearchResult($chunk, $distance);
         }
         return $found;
+    }
+
+    /**
+     * @param ChunkDeleteQuery $query
+     * @return int
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\DatabaseException
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\QueryException
+     */
+    public function deleteChunk(ChunkDeleteQuery $query): int
+    {
+        $operation = $this->query->delete($this->schema->table)
+            ->where($this->schema->tenantId, SqlOperator::EQUALS, $query->tenantId)
+            ->where($this->schema->collection, SqlOperator::EQUALS, $query->collection)
+            ->where($this->schema->chunkId, SqlOperator::EQUALS, $query->chunkId);
+        $this->applySpace($operation, $query->space);
+
+        return $operation->execute()->count;
+    }
+
+    /**
+     * @param DocumentDeleteQuery $query
+     * @return int
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\DatabaseException
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\QueryException
+     */
+    public function deleteDocument(DocumentDeleteQuery $query): int
+    {
+        $operation = $this->query->delete($this->schema->table)
+            ->where($this->schema->tenantId, SqlOperator::EQUALS, $query->tenantId)
+            ->where($this->schema->collection, SqlOperator::EQUALS, $query->collection)
+            ->where($this->schema->documentId, SqlOperator::EQUALS, $query->documentId);
+        if ($query->space !== null) {
+            $this->applySpace($operation, $query->space);
+        }
+
+        return $operation->execute()->count;
+    }
+
+    /**
+     * @param CollectionDeleteQuery $query
+     * @return int
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\DatabaseException
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\QueryException
+     */
+    public function clearCollection(CollectionDeleteQuery $query): int
+    {
+        return $this->query->delete($this->schema->table)
+            ->where($this->schema->tenantId, SqlOperator::EQUALS, $query->tenantId)
+            ->where($this->schema->collection, SqlOperator::EQUALS, $query->collection)
+            ->execute()
+            ->count;
+    }
+
+    /**
+     * @param QueryBuilder $operation
+     * @param EmbeddingSpace $space
+     * @return void
+     * @throws \Omegaalfa\QueryBuilder\Exceptions\QueryException
+     */
+    private function applySpace(QueryBuilder $operation, EmbeddingSpace $space): void
+    {
+        $operation
+            ->where($this->schema->embeddingProvider, SqlOperator::EQUALS, $space->provider)
+            ->where($this->schema->embeddingModel, SqlOperator::EQUALS, $space->model)
+            ->where($this->schema->embeddingDimensions, SqlOperator::EQUALS, $space->dimensions)
+            ->where($this->schema->embeddingRevision, SqlOperator::EQUALS, $space->revision)
+            ->where($this->schema->embeddingFingerprint, SqlOperator::EQUALS, $space->fingerprint());
     }
 }

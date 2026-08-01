@@ -11,6 +11,9 @@ use Omegaalfa\ContextEngine\Embedding\{EmbeddingBatchRequest,EmbeddingSpace};
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
 use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Retrieval\{Retriever,VectorSearchQuery,VectorSearchResult};
+use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
+use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
+use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
 use PHPUnit\Framework\TestCase;
 
 final class RetrievalAndPromptTest extends TestCase
@@ -30,6 +33,18 @@ final class RetrievalAndPromptTest extends TestCase
             }
         };
         $store = new class () implements VectorStore {
+            public function deleteChunk(ChunkDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function deleteDocument(DocumentDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function clearCollection(CollectionDeleteQuery $query): int
+            {
+                return 0;
+            }
             public ?VectorSearchQuery $query = null;
             public function storeBatch(array $chunks): void {} public function search(VectorSearchQuery $query): array
             {

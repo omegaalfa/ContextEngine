@@ -38,9 +38,12 @@ Recebe lotes de `Chunk` e produz `BatchEmbeddingResult`. O executor pode limitar
 ```text
 public function storeBatch(array $chunks): void;
 public function search(VectorSearchQuery $query): array;
+public function deleteChunk(ChunkDeleteQuery $query): int;
+public function deleteDocument(DocumentDeleteQuery $query): int;
+public function clearCollection(CollectionDeleteQuery $query): int;
 ```
 
-Persiste `list<EmbeddedChunk>` e retorna `list<VectorSearchResult>`, respeitando tenant, collection, status e espaço vetorial.
+Persiste `list<EmbeddedChunk>`, retorna `list<VectorSearchResult>` e oferece manutenção explícita por chunk, documento e collection. Exclusões sempre exigem tenant e collection; `deleteChunk()` também exige o espaço vetorial. `deleteDocument()` remove somente um espaço quando informado ou todas as versões do documento quando `space` é `null`. Os métodos de exclusão retornam a quantidade de linhas removidas.
 
 ### Modelos de linguagem
 
@@ -75,7 +78,7 @@ Trecho com `id`, `documentId`, `tenantId`, `content`, posição não negativa, m
 
 ### Utilitários
 
-- `RecursiveTextSplitter(int $chunkSize = 1000, int $overlap = 150)`: incremental; exige tamanho positivo e overlap menor que o tamanho.
+- `RecursiveTextSplitter(int $chunkSize = 1000, int $overlap = 150)`: incremental; exige tamanho positivo e overlap menor que o tamanho, preserva cobertura integral do texto normalizado e usa limites semânticos sem criar lacunas.
 - `TextNormalizer::normalize(string $text): string`: uniformiza quebras de linha e espaços.
 - `Batcher::batches(iterable $items, int $size): iterable`: preserva chaves, inclui o lote final incompleto e não materializa toda a entrada.
 - `TextFileLoader(string $path, string $tenantId)`: valida tenant e arquivo.
@@ -169,7 +172,7 @@ foreach ($rag->stream(new Question('Resuma.', 'acme')) as $delta) {
 ## ▣ PgVector
 
 - `PgVectorSchema`: configura e valida identificadores de tabela e colunas.
-- `PgVectorStore(QueryBuilder $query, PgVectorSchema $schema = new PgVectorSchema())`: persiste serialmente e busca. O upsert usa tenant + collection + chunk + fingerprint e não solicita `RETURNING` nem sequence.
+- `PgVectorStore(QueryBuilder $query, PgVectorSchema $schema = new PgVectorSchema())`: persiste, busca e remove por escopos explícitos. O upsert usa tenant + collection + chunk + fingerprint e não solicita `RETURNING` nem sequence.
 
 O schema é provisionado externamente. Veja [schema](database-schema.md) e [Docker](docker-integration.md).
 

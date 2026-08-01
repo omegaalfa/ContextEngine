@@ -61,7 +61,9 @@ final readonly class ArticleLoader implements DocumentLoader
 
 Assinatura: `__construct(int $chunkSize = 1000, int $overlap = 150, TextNormalizer $normalizer = new TextNormalizer())` e `split(Document $document): iterable<Chunk>`.
 
-Ele normaliza CRLF/tabs/espaços, então tenta parágrafos, linhas, sentenças, palavras e caracteres. Caracteres são o último recurso, não a estratégia padrão. Conteúdo abaixo do limite gera um chunk. Overlap deve ser `>= 0` e menor que `chunkSize`; é obtido do sufixo do chunk anterior. Tenant, collection, status e metadata são propagados.
+Ele normaliza CRLF, tabs e espaços e percorre o texto por offsets. Dentro de cada janela procura, nessa ordem, limites de parágrafo, linha, sentença e espaço; quando nenhum corte seguro existe, usa o limite de caracteres. Os separadores apenas escolhem onde terminar a janela: nunca fazem o cursor saltar texto ainda não coberto.
+
+`overlap` deve ser `>= 0` e menor que `chunkSize`. O chunk seguinte começa exatamente `overlap` caracteres antes do fim do anterior. Isso permite reconstruir o texto normalizado removendo o prefixo repetido de cada chunk subsequente, sem lacunas ou reordenação. Tenant, collection, status e metadata são propagados.
 
 O ID é SHA-256 de tenant, documento, posição e conteúdo final. Ele é determinístico para este splitter, mas a API permite splitters externos; o banco não pressupõe ID global.
 

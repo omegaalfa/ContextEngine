@@ -7,6 +7,9 @@ namespace Omegaalfa\ContextEngine\Tests\Integration;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Embedding\{EmbeddedChunk,Embedding,EmbeddingSpace};
 use Omegaalfa\ContextEngine\Retrieval\{VectorSearchQuery};
+use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
+use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
+use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\PgVectorStore;
 use Omegaalfa\QueryBuilder\Connection\PDOConnection;
 use Omegaalfa\QueryBuilder\{DatabaseSettings,QueryBuilder};
@@ -90,9 +93,35 @@ final class PgVectorIntegrationTest extends TestCase
             self::assertSame(0, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE chunk_id='duplicate'")->fetchColumn());
         }
     }
+    public function testDeletionOperationsNeverEscapeTenantCollectionOrVectorSpace(): void
+    {
+        $spaceA = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'delete-a');
+        $spaceB = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'delete-b');
+        $this->store->storeBatch([
+            $this->embeddedForDocument('shared', 'doc-1', 'tenant-a', 'docs', $spaceA, $this->vector(0)),
+            $this->embeddedForDocument('second', 'doc-1', 'tenant-a', 'docs', $spaceA, $this->vector(1)),
+        ]);
+        $this->store->storeBatch([$this->embeddedForDocument('shared', 'doc-1', 'tenant-a', 'docs', $spaceB, $this->vector(1))]);
+        $this->store->storeBatch([$this->embeddedForDocument('shared', 'doc-1', 'tenant-b', 'docs', $spaceA, $this->vector(0))]);
+        $this->store->storeBatch([$this->embeddedForDocument('shared', 'doc-1', 'tenant-a', 'private', $spaceA, $this->vector(0))]);
+        $this->store->storeBatch([$this->embeddedForDocument('other', 'doc-2', 'tenant-a', 'docs', $spaceA, $this->vector(0))]);
+
+        self::assertSame(1, $this->store->deleteChunk(new ChunkDeleteQuery('tenant-a', 'docs', 'shared', $spaceA)));
+        self::assertSame(1, $this->store->deleteDocument(new DocumentDeleteQuery('tenant-a', 'docs', 'doc-1', $spaceA)));
+        self::assertSame(1, $this->store->deleteDocument(new DocumentDeleteQuery('tenant-a', 'docs', 'doc-1')));
+        self::assertSame(1, $this->store->clearCollection(new CollectionDeleteQuery('tenant-a', 'docs')));
+
+        self::assertSame(2, (int)$this->pdo->query('SELECT count(*) FROM context_chunks')->fetchColumn());
+        self::assertSame(1, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE tenant_id='tenant-b' AND collection='docs'")->fetchColumn());
+        self::assertSame(1, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE tenant_id='tenant-a' AND collection='private'")->fetchColumn());
+    }
     private function embedded(string $id, string $tenant, string $collection, EmbeddingSpace $space, array $values): EmbeddedChunk
     {
-        return new EmbeddedChunk(new Chunk($id, 'doc', $tenant, "content-$id", 0, [], $collection), new Embedding($values, $space));
+        return $this->embeddedForDocument($id, 'doc', $tenant, $collection, $space, $values);
+    }
+    private function embeddedForDocument(string $id, string $documentId, string $tenant, string $collection, EmbeddingSpace $space, array $values): EmbeddedChunk
+    {
+        return new EmbeddedChunk(new Chunk($id, $documentId, $tenant, "content-$id", 0, [], $collection), new Embedding($values, $space));
     }
     /** @return list<float> */
     private function vector(int $axis): array
