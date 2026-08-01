@@ -9,9 +9,12 @@ use Omegaalfa\ContextEngine\Document\Document;
 use Omegaalfa\ContextEngine\Embedding\Embedding;
 use Omegaalfa\ContextEngine\Embedding\{EmbeddingBatchRequest,EmbeddingSpace};
 use Omegaalfa\ContextEngine\Exception\IngestionException;
+use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
 use Omegaalfa\ContextEngine\Ingestion\{BatchEmbeddingResult,BatchWindowException,IngestionPipeline};
+use Omegaalfa\ContextEngine\Ingestion\BatchExecutionProgress;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
 use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
+use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use PHPUnit\Framework\TestCase;
 
 final class IngestionPipelineTest extends TestCase
@@ -34,7 +37,7 @@ final class IngestionPipelineTest extends TestCase
                 return [];
             }
         };
-        $report = new IngestionPipeline(new RecursiveTextSplitter(), $provider, $store)->ingest($loader);
+        $report = new IngestionPipeline(new RecursiveTextSplitter(), $provider, $store, $this->executor())->ingest($loader);
         self::assertTrue($report->complete);
         self::assertSame(0, $report->chunksPersisted);
         self::assertSame(0, $report->batchesPersisted);
@@ -69,7 +72,7 @@ final class IngestionPipelineTest extends TestCase
                 return [];
             }
         };
-        $report = new IngestionPipeline(new RecursiveTextSplitter(30, 4), $embedding, $store, 3)->ingest($loader);
+        $report = new IngestionPipeline(new RecursiveTextSplitter(30, 4), $embedding, $store, $this->executor(), 3)->ingest($loader);
         self::assertGreaterThan(3, $report->chunksPersisted);
         self::assertLessThanOrEqual(3, max($store->sizes));
         self::assertSame($report->chunksPersisted, array_sum($store->sizes));
@@ -93,7 +96,7 @@ final class IngestionPipelineTest extends TestCase
                 return [];
             }
         };
-        new IngestionPipeline(new RecursiveTextSplitter(10, 1), $provider, $store, 3)->ingest($loader);
+        new IngestionPipeline(new RecursiveTextSplitter(10, 1), $provider, $store, $this->executor(), 3)->ingest($loader);
         self::assertNotSame(0, end($store->sizes));
         self::assertLessThanOrEqual(3, end($store->sizes));
     }
@@ -120,12 +123,12 @@ final class IngestionPipelineTest extends TestCase
             public function execute(iterable $batches, EmbeddingProvider $provider): iterable
             {
                 $batch = [...$batches][0];
-                yield new BatchEmbeddingResult(0, $batch, array_map(fn () => new Embedding([1], $provider->space()), $batch));
-                throw new BatchWindowException(1, [1,2], [2], [2], [1 => 1,2 => 1], new \RuntimeException('provider failed'));
+                yield new BatchEmbeddingResult(0, $batch, array_map(fn () => new Embedding([1], $provider->space()), $batch), new BatchExecutionProgress(3, 3, 1, 0, 3));
+                throw new BatchWindowException(1, [1,2], [2], [2], new BatchExecutionProgress(3, 3, 3, 1, 3), new \RuntimeException('provider failed'));
             }
         };
         try {
-            new IngestionPipeline(new RecursiveTextSplitter(8, 1), $provider, $store, 1, executor:$executor)->ingest($loader);
+            new IngestionPipeline(new RecursiveTextSplitter(8, 1), $provider, $store, $executor, 1)->ingest($loader);
             self::fail('Expected failure');
         } catch (IngestionException $e) {
             self::assertSame('doc-failed', $e->documentId);
@@ -134,8 +137,59 @@ final class IngestionPipelineTest extends TestCase
             self::assertSame(1, $e->partialReport->chunksPersisted);
             self::assertSame(1, $e->partialReport->batchesDiscarded);
             self::assertFalse($e->partialReport->complete);
+            self::assertSame('embedding_batch_failed', $e->partialReport->failure?->code);
+            self::assertSame('Embedding generation failed.', $e->partialReport->failure?->message);
             self::assertSame('provider failed', $e->getPrevious()?->getMessage());
+            self::assertStringNotContainsString('provider failed', $e->getMessage());
         }
+    }
+    public function testRejectsInvalidBatchSizeAtConstruction(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new IngestionPipeline(new RecursiveTextSplitter(), $this->provider(), new class () implements VectorStore {
+            public function storeBatch(array $chunks): void {}
+            public function search(VectorSearchQuery $query): array
+            {
+                return [];
+            }
+        }, $this->executor(), 0);
+    }
+    public function testPersistenceFailureIsSanitizedAndDrainsStartedEmbeddings(): void
+    {
+        $loader = new class () implements DocumentLoader {
+            public function load(): iterable
+            {
+                yield new Document('doc', 'tenant', 'one two three four five six');
+            }
+        };
+        $provider = new SuspendingIngestionProvider();
+        $store = new class () implements VectorStore {
+            public function storeBatch(array $chunks): void
+            {
+                throw new \RuntimeException('database host and SQL must stay private');
+            }
+            public function search(VectorSearchQuery $query): array
+            {
+                return [];
+            }
+        };
+        try {
+            new IngestionPipeline(new RecursiveTextSplitter(8, 1), $provider, $store, new FiberBatchEmbeddingExecutor(new FiberEventLoop(), 3), 1)->ingest($loader);
+            self::fail('Expected persistence failure.');
+        } catch (IngestionException $error) {
+            self::assertSame('batch_persistence_failed', $error->partialReport->failure?->code);
+            self::assertSame('Batch persistence failed.', $error->partialReport->failure?->message);
+            self::assertStringNotContainsString('database host', $error->getMessage());
+            self::assertSame(0, $error->partialReport->batchesPersisted);
+            self::assertSame(3, $error->partialReport->batchesPlanned, 'No batch beyond the failed window may be scheduled.');
+            self::assertSame($error->partialReport->batchesStarted, $error->partialReport->batchesCompleted);
+            self::assertSame($error->partialReport->batchesPlanned, $error->partialReport->batchesDiscarded);
+            self::assertSame(0, $provider->active);
+        }
+    }
+    private function executor(): BatchEmbeddingExecutor
+    {
+        return new FiberBatchEmbeddingExecutor(new FiberEventLoop());
     }
     private function provider(): EmbeddingProvider
     {
@@ -151,5 +205,25 @@ final class IngestionPipelineTest extends TestCase
                 return array_map(fn () => new Embedding([1], $this->space()), $request->texts);
             }
         };
+    }
+}
+
+final class SuspendingIngestionProvider implements EmbeddingProvider
+{
+    public int $active = 0;
+    public function space(): EmbeddingSpace
+    {
+        return new EmbeddingSpace('fake', 'm', 1);
+    }
+    public function embed(string $text, string $tenantId): Embedding
+    {
+        return new Embedding([1], $this->space());
+    }
+    public function embedBatch(EmbeddingBatchRequest $request): array
+    {
+        $this->active++;
+        \Fiber::suspend();
+        $this->active--;
+        return array_map(fn () => new Embedding([1], $this->space()), $request->texts);
     }
 }

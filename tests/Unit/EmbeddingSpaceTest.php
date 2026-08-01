@@ -22,7 +22,7 @@ final class EmbeddingSpaceTest extends TestCase
     public function testBatchCannotMixSpaces(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        new BatchEmbeddingResult(0, [new Chunk('c1', 'd', 't', 'x', 0),new Chunk('c2', 'd', 't', 'y', 1)], [new Embedding([1], new EmbeddingSpace('p', 'm', 1)),new Embedding([1], new EmbeddingSpace('q', 'm', 1))]);
+        new BatchEmbeddingResult(0, [new Chunk('c1', 'd', 't', 'x', 0),new Chunk('c2', 'd', 't', 'y', 1)], [new Embedding([1], new EmbeddingSpace('p', 'm', 1)),new Embedding([1], new EmbeddingSpace('q', 'm', 1))], new \Omegaalfa\ContextEngine\Ingestion\BatchExecutionProgress(1, 1, 1, 0, 2));
     }
 
     public function testEmbeddingRejectsDimensionMismatch(): void

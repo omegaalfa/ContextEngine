@@ -22,10 +22,13 @@ final class FiberBatchEmbeddingExecutorTest extends TestCase
         for ($i = 0;$i < 5;$i++) {
             $batches[] = [new Chunk("c$i", 'd', 't', "text$i", $i)];
         }
-        $results = iterator_to_array(new FiberBatchEmbeddingExecutor(concurrency:2)->execute($batches, $provider));
+        $results = iterator_to_array(new FiberBatchEmbeddingExecutor(new FiberEventLoop(), 2)->execute($batches, $provider));
         self::assertSame(2, $provider->maximumActive);
         self::assertSame([0,1,2,3,4], array_map(fn ($r) => $r->sequence, $results));
         self::assertSame(['text0','text1','text2','text3','text4'], array_map(fn ($r) => $r->chunks[0]->content, $results));
+        self::assertSame(5, $results[4]->progress->scheduled);
+        self::assertSame(5, $results[4]->progress->completed);
+        self::assertSame(5, $results[4]->progress->chunksScheduled);
     }
     public function testOutOfOrderCompletionsRemainAssociatedWithTheirBatch(): void
     {
@@ -48,12 +51,15 @@ final class FiberBatchEmbeddingExecutorTest extends TestCase
             $batches[] = [new Chunk("c$i", 'd', 't', "text$i", $i)];
         }
         try {
-            iterator_to_array(new FiberBatchEmbeddingExecutor(concurrency:3)->execute($batches, $provider));
+            iterator_to_array(new FiberBatchEmbeddingExecutor(new FiberEventLoop(), 3)->execute($batches, $provider));
             self::fail('Expected failure');
         } catch (BatchWindowException $e) {
             self::assertSame(1, $e->failedSequence);
             self::assertSame([0,1,2], $e->started);
             self::assertSame([2], $e->discarded);
+            self::assertSame(3, $e->progress->scheduled);
+            self::assertSame(3, $e->progress->completed);
+            self::assertSame(1, $e->progress->discarded);
             self::assertSame(0, $provider->active);
         }
     }
@@ -75,7 +81,23 @@ final class FiberBatchEmbeddingExecutorTest extends TestCase
             }
         };
         $this->expectException(BatchWindowException::class);
-        iterator_to_array(new FiberBatchEmbeddingExecutor(concurrency: 1)->execute([[new Chunk('c', 'd', 't', 'text', 0)]], $provider));
+        iterator_to_array(new FiberBatchEmbeddingExecutor(new FiberEventLoop(), 1)->execute([[new Chunk('c', 'd', 't', 'text', 0)]], $provider));
+    }
+
+    public function testAbandonedConsumerDrainsTheStartedWindow(): void
+    {
+        $provider = new SuspendingProvider();
+        $batches = [
+            [new Chunk('c0', 'd', 't', 'text0', 0)],
+            [new Chunk('c1', 'd', 't', 'text1', 1)],
+            [new Chunk('c2', 'd', 't', 'text2', 2)],
+        ];
+        $results = new FiberBatchEmbeddingExecutor(new FiberEventLoop(), 3)->execute($batches, $provider);
+        self::assertInstanceOf(\Generator::class, $results);
+        $results->rewind();
+        self::assertSame(3, $provider->maximumActive);
+        unset($results);
+        self::assertSame(0, $provider->active);
     }
 }
 final class DelayedProvider implements EmbeddingProvider

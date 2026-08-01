@@ -13,9 +13,9 @@ __construct(
     TextSplitter $splitter,
     EmbeddingProvider $embeddings,
     VectorStore $store,
+    BatchEmbeddingExecutor $executor,
     int $batchSize = 32,
-    Batcher $batcher = new Batcher(),
-    BatchEmbeddingExecutor $executor = new FiberBatchEmbeddingExecutor()
+    Batcher $batcher = new Batcher()
 )
 ingest(DocumentLoader $loader): IngestionReport
 ```
@@ -42,7 +42,7 @@ $report = $ingestion->ingest(
 );
 ```
 
-O pipeline nunca materializa todos os chunks: o `Batcher` produz listas não vazias, inclusive o último lote incompleto. Cada resultado deve ter a mesma cardinalidade e ordem do request e pertencer ao espaço declarado pelo provider. Persistência ocorre serialmente depois da validação e fora das chamadas HTTP.
+O pipeline nunca materializa todos os chunks: o `Batcher` produz listas não vazias, inclusive o último lote incompleto. Cada resultado deve ter a mesma cardinalidade e ordem do request e pertencer ao espaço declarado pelo provider. Persistência ocorre serialmente depois da validação e fora das chamadas HTTP. Cada chamada a `VectorStore::storeBatch()` deve ser atômica; a ingestão completa não é atômica entre lotes.
 
 No exemplo, `$batchExecutor` foi composto no bootstrap. Se `$embeddingProvider` usa `AsyncHttpClient`, crie um único `FiberEventLoop` e injete-o tanto no cliente quanto no `FiberBatchEmbeddingExecutor`. Consulte [Concorrência e backpressure](concurrency.md).
 
@@ -52,7 +52,7 @@ Campos públicos readonly:
 
 | Campo | Significado |
 |---|---|
-| `batchesPlanned` | lotes conhecidos/iniciados até o encerramento |
+| `batchesPlanned` | lotes retirados da entrada e admitidos para processamento; não materializa toda a entrada |
 | `batchesStarted` | operações iniciadas |
 | `batchesCompleted` | operações concluídas |
 | `batchesPersisted` | lotes gravados serialmente |
@@ -60,10 +60,12 @@ Campos públicos readonly:
 | `chunksProduced` | chunks puxados para processamento |
 | `chunksSent` | chunks enviados ao provider |
 | `chunksPersisted` | chunks gravados |
-| `firstFailure` | mensagem original ou `null` |
+| `failure` | código e mensagem pública sanitizada, ou `null` |
 | `affectedBatchSequences` | sequências falha/descartadas |
 | `complete` | ingestão terminou sem falha |
 
 ## Falha parcial
 
 Ao primeiro erro, nenhum novo lote da próxima janela é iniciado. Futures já iniciados são drenados para liberar recursos; resultados posteriores são descartados. `IngestionException` preserva `previous`, `partialReport`, `documentId`, `space` e `failedBatchSequence`. Uma nova execução é segura porque o store faz upsert pela identidade composta.
+
+`IngestionReport::failure` contém somente código e mensagem seguros para a aplicação. A mensagem original de banco ou provider não é copiada para o relatório nem para a mensagem pública de `IngestionException`; ela permanece acessível como causa para logging controlado.

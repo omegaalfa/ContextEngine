@@ -14,9 +14,7 @@ final readonly class JsonClient
     /**
      * @param AsyncHttpClient $client
      */
-    public function __construct(private AsyncHttpClient $client)
-    {
-    }
+    public function __construct(private AsyncHttpClient $client) {}
 
     /**
      * @param array<string,mixed> $payload

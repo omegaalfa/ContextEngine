@@ -114,14 +114,16 @@ O request agrupa tenant, textos, espaço esperado e metadata; lote vazio é vál
 $report = $pipeline->ingest($loader);
 ```
 
-O construtor recebe splitter, provider, store, tamanho do lote, `Batcher` e executor. `ingest()` percorre entradas incrementalmente, valida ordem/quantidade/espaço e persiste resultados serialmente.
+O construtor exige splitter, provider, store e executor; tamanho do lote e `Batcher` são configuráveis. `ingest()` percorre entradas incrementalmente, valida ordem/quantidade/espaço e persiste resultados serialmente.
 
 ### Relatórios e execução
 
-- `IngestionReport`: documentos/chunks, lotes iniciados/concluídos/persistidos, sequências persistidas/descartadas e estado completo/parcial. Métodos `empty()` e `with*()` criam novas instâncias.
-- `BatchEmbeddingResult`: valida sequência, tipos e cardinalidade entre chunks e embeddings.
-- `BatchWindowException`: informa lote que falhou e sequências iniciadas, concluídas e descartadas.
-- `FiberBatchEmbeddingExecutor(FiberEventLoop $loop = new FiberEventLoop(), int $concurrency = 4)`: janela limitada; cada resultado mantém sequência e chunks originais mesmo fora de ordem. Com provider baseado em `AsyncHttpClient`, injete no cliente a mesma instância de loop usada pelo executor.
+- `IngestionReport`: contadores incrementais, sequências afetadas, falha pública sanitizada e estado completo/parcial.
+- `IngestionFailure`: código estável, mensagem segura, documento e sequência opcionais; a causa técnica permanece em `IngestionException::getPrevious()`.
+- `BatchExecutionProgress`: snapshot dos lotes agendados, iniciados, concluídos e descartados sem consumir antecipadamente toda a entrada.
+- `BatchEmbeddingResult`: valida sequência, tipos e cardinalidade entre chunks e embeddings e carrega o snapshot de progresso.
+- `BatchWindowException`: informa lote que falhou, sequências iniciadas/concluídas/descartadas e o progresso final da janela drenada.
+- `FiberBatchEmbeddingExecutor(FiberEventLoop $loop, int $concurrency = 4)`: janela limitada; cada resultado mantém sequência e chunks originais mesmo fora de ordem. O loop é obrigatório; com provider baseado em `AsyncHttpClient`, injete no cliente a mesma instância usada pelo executor.
 
 ## ◎ Retrieval e RAG
 

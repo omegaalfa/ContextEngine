@@ -299,7 +299,7 @@ O schema de integração/desenvolvimento usa `vector(1024)` para o BGE-M3 via Ol
 
 Concorrência é política de execução da ingestão, não propriedade do embedding ou do domínio. Ela fica em `Infrastructure` porque depende de FiberEventLoop e de seu `Future`.
 
-`BatchEmbeddingExecutor` existe para que `IngestionPipeline` possa solicitar “execute estes lotes” sem conhecer fibers. A implementação padrão cria uma janela limitada, inicia até `concurrency` operações HTTP, aguarda e valida cada lote, emite resultados para persistência serial e só então avança para a próxima janela.
+`BatchEmbeddingExecutor` existe para que `IngestionPipeline` possa solicitar “execute estes lotes” sem conhecer fibers. A implementação incluída cria uma janela limitada, inicia até `concurrency` operações HTTP, aguarda e valida cada lote, emite resultados para persistência serial e só então avança para a próxima janela. O executor é obrigatório no construtor da pipeline: nenhuma infraestrutura é escolhida implicitamente.
 
 Na composição concreta atual, o `AsyncHttpClient` usado pelo provider e o `FiberBatchEmbeddingExecutor` devem receber **a mesma instância** de `FiberEventLoop`. O loop compartilhado coordena tanto a operação HTTP quanto o fiber que aguarda seu resultado. Loops independentes podem produzir uma espera indefinida em `ingest()`.
 

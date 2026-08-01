@@ -14,7 +14,6 @@ use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 
 final readonly class OllamaEmbeddingProvider implements EmbeddingProvider
 {
-
     /**
      * @var JsonClient
      */
@@ -31,8 +30,7 @@ final readonly class OllamaEmbeddingProvider implements EmbeddingProvider
         private int     $dimensions,
         AsyncHttpClient $client = new AsyncHttpClient(),
         private string  $baseUrl = 'http://127.0.0.1:11434'
-    )
-    {
+    ) {
         $this->http = new JsonClient($client);
     }
 

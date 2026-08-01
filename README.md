@@ -111,7 +111,7 @@ Consulte [Primeiros passos](docs/getting-started.md) para banco, dimensão, Dock
 
 ## 📥 Ingestão mínima
 
-**Código copiável; pressupõe `$embeddingProvider` e `$vectorStore` já configurados:**
+**Código copiável; pressupõe `$embeddingProvider`, `$vectorStore` e `$batchExecutor` já configurados. Se o provider usa `AsyncHttpClient`, o cliente e o executor devem compartilhar o mesmo event loop:**
 
 ```php
 <?php
@@ -126,6 +126,7 @@ $pipeline = new IngestionPipeline(
     splitter: new RecursiveTextSplitter(chunkSize: 1_000, overlap: 150),
     embeddings: $embeddingProvider,
     store: $vectorStore,
+    executor: $batchExecutor,
     batchSize: 32,
 );
 

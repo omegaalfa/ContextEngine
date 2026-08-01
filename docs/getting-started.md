@@ -851,7 +851,7 @@ printf(
 - `batchesPlanned`, `batchesStarted`, `batchesCompleted`;
 - `batchesPersisted`, `batchesDiscarded`;
 - `chunksProduced`, `chunksSent`, `chunksPersisted`;
-- `firstFailure`, `affectedBatchSequences`, `complete`.
+- `failure` (código e mensagem segura), `affectedBatchSequences`, `complete`.
 
 Uma saída possível é `Completa: sim | chunks salvos: 3 | lotes salvos: 3`; números dependem do conteúdo.
 

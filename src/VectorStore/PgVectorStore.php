@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\VectorStore;
 
+use InvalidArgumentException;
 use JsonException;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
@@ -23,12 +24,10 @@ final readonly class PgVectorStore implements VectorStore
      * @param QueryBuilder $query
      * @param PgVectorSchema $schema
      */
-    public function __construct(private QueryBuilder $query, private PgVectorSchema $schema = new PgVectorSchema())
-    {
-    }
+    public function __construct(private QueryBuilder $query, private PgVectorSchema $schema = new PgVectorSchema()) {}
 
     /**
-     * @param array $chunks
+     * @param list<EmbeddedChunk> $chunks
      * @return void
      * @throws JsonException
      * @throws \Omegaalfa\QueryBuilder\Exceptions\DatabaseException
@@ -37,13 +36,33 @@ final readonly class PgVectorStore implements VectorStore
      */
     public function storeBatch(array $chunks): void
     {
-        $first = $chunks[0]->embedding;
+        if ($chunks === []) {
+            return;
+        }
+        foreach ($chunks as $index => $item) {
+            // Runtime validation protects callers because PHP arrays do not enforce PHPDoc generics.
+            /** @phpstan-ignore instanceof.alwaysTrue */
+            if (!$item instanceof EmbeddedChunk) {
+                throw new InvalidArgumentException(sprintf(
+                    'Expected EmbeddedChunk at index %d, received %s.',
+                    $index,
+                    get_debug_type($item),
+                ));
+            }
+        }
+        $firstItem = $chunks[0];
+        $first = $firstItem->embedding;
+        $tenantId = $firstItem->chunk->tenantId;
+        $collection = $firstItem->chunk->collection;
         $rows = [];
         foreach ($chunks as $item) {
             if ($item->embedding->space->fingerprint() !== $first->space->fingerprint()) {
                 throw new InvalidEmbeddingException('A batch cannot mix vector spaces.');
             }
             $chunk = $item->chunk;
+            if ($chunk->tenantId !== $tenantId || $chunk->collection !== $collection) {
+                throw new InvalidArgumentException('A batch cannot mix tenants or collections.');
+            }
             $rows[] = [$this->schema->chunkId => $chunk->id, $this->schema->documentId => $chunk->documentId, $this->schema->tenantId => $chunk->tenantId, $this->schema->collection => $chunk->collection, $this->schema->status => $chunk->status, $this->schema->content => $chunk->content, $this->schema->position => $chunk->position, $this->schema->metadata => json_encode($chunk->metadata, JSON_THROW_ON_ERROR), $this->schema->embedding => new Vector($item->embedding->values, $item->embedding->dimensions()), $this->schema->embeddingProvider => $item->embedding->space->provider, $this->schema->embeddingModel => $item->embedding->space->model, $this->schema->embeddingDimensions => $item->embedding->space->dimensions, $this->schema->embeddingRevision => $item->embedding->space->revision, $this->schema->embeddingFingerprint => $item->embedding->space->fingerprint()];
         }
         $this->query->insertBatch($this->schema->table, $rows)->onConflict([$this->schema->tenantId, $this->schema->collection, $this->schema->chunkId, $this->schema->embeddingFingerprint])->doUpdate([$this->schema->content, $this->schema->metadata, $this->schema->status, $this->schema->embedding]);

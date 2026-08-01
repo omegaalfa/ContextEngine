@@ -32,6 +32,7 @@ final readonly class OpenAILanguageModel implements CacheableLanguageModel
      * @param array $messages
      * @return string
      */
+    /** @param list<\Omegaalfa\ContextEngine\Prompt\ChatMessage> $messages */
     public function complete(array $messages): string
     {
         $response = $this->http->post($this->baseUrl . '/chat/completions', ['model' => $this->model, 'messages' => $this->messages($messages)]);
@@ -59,6 +60,6 @@ final readonly class OpenAILanguageModel implements CacheableLanguageModel
      */
     private function messages(array $messages): array
     {
-        return array_map(static fn(ChatMessage $m): array => ['role' => $m->role->value, 'content' => $m->content], $messages);
+        return array_map(static fn (ChatMessage $m): array => ['role' => $m->role->value, 'content' => $m->content], $messages);
     }
 }

@@ -22,7 +22,7 @@ final readonly class Embedding
                 throw new InvalidEmbeddingException('Embedding values must be finite numbers.');
             }
         }
-        $this->values = array_map(static fn(int|float $v): float => (float)$v, $values);
+        $this->values = array_map(static fn (int|float $v): float => (float)$v, $values);
         if (count($this->values) !== $space->dimensions) {
             throw new InvalidEmbeddingException("Embedding space expects {$space->dimensions} dimensions, got " . count($this->values) . '.');
         }

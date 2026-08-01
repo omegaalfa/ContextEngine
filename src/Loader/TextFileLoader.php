@@ -15,9 +15,7 @@ final readonly class TextFileLoader implements DocumentLoader
      * @param string $path
      * @param string $tenantId
      */
-    public function __construct(private string $path, private string $tenantId)
-    {
-    }
+    public function __construct(private string $path, private string $tenantId) {}
 
     /**
      * @return Generator

@@ -30,7 +30,7 @@ final readonly class RecursiveTextSplitter implements TextSplitter
 
     /**
      * @param Document $document
-     * @return iterable
+     * @return iterable<Chunk>
      */
     public function split(Document $document): iterable
     {
@@ -47,7 +47,8 @@ final readonly class RecursiveTextSplitter implements TextSplitter
                 $id,
                 $document->id,
                 $document->tenantId,
-                $content, $position,
+                $content,
+                $position,
                 $document->metadata,
                 $document->collection,
                 $document->status

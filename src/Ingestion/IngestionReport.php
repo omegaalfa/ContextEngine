@@ -16,12 +16,26 @@ final readonly class IngestionReport
         public int $chunksProduced,
         public int $chunksSent,
         public int $chunksPersisted,
-        public ?string $firstFailure,
+        public ?IngestionFailure $failure,
         public array $affectedBatchSequences,
         public bool $complete,
     ) {
         if (min($batchesPlanned, $batchesStarted, $batchesCompleted, $batchesPersisted, $batchesDiscarded, $chunksProduced, $chunksSent, $chunksPersisted) < 0) {
             throw new \InvalidArgumentException('Report counters cannot be negative.');
         }
+        if ($batchesStarted > $batchesPlanned || $batchesCompleted > $batchesStarted || $batchesPersisted > $batchesCompleted || $batchesDiscarded > $batchesCompleted) {
+            throw new \InvalidArgumentException('Report batch counters are inconsistent.');
+        }
+        if ($chunksSent > $chunksProduced || $chunksPersisted > $chunksSent) {
+            throw new \InvalidArgumentException('Report chunk counters are inconsistent.');
+        }
+        if ($complete === ($failure !== null)) {
+            throw new \InvalidArgumentException('Complete reports cannot contain failures and partial reports must contain one.');
+        }
+    }
+
+    public function firstFailure(): ?string
+    {
+        return $this->failure?->message;
     }
 }

@@ -47,11 +47,9 @@ final class PgVectorIntegrationTest extends TestCase
     {
         $spaceA = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'a');
         $spaceB = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'b');
-        $this->store->storeBatch([
-            $this->embedded('shared', 'tenant-a', 'docs', $spaceA, $this->vector(0)),
-            $this->embedded('shared', 'tenant-b', 'docs', $spaceA, $this->vector(0)),
-            $this->embedded('shared', 'tenant-a', 'private', $spaceA, $this->vector(0)),
-        ]);
+        $this->store->storeBatch([$this->embedded('shared', 'tenant-a', 'docs', $spaceA, $this->vector(0))]);
+        $this->store->storeBatch([$this->embedded('shared', 'tenant-b', 'docs', $spaceA, $this->vector(0))]);
+        $this->store->storeBatch([$this->embedded('shared', 'tenant-a', 'private', $spaceA, $this->vector(0))]);
         $this->store->storeBatch([$this->embedded('shared', 'tenant-a', 'docs', $spaceB, $this->vector(1))]);
         $this->store->storeBatch([$this->embedded('shared', 'tenant-a', 'docs', $spaceA, $this->vector(0))]);
         self::assertSame(4, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE chunk_id='shared'")->fetchColumn(), 'Tenant, collection, and vector space must create independent identities while an identical upsert stays idempotent.');
@@ -78,6 +76,19 @@ final class PgVectorIntegrationTest extends TestCase
         $this->expectException(\Throwable::class);
         $space = new EmbeddingSpace('fake', 'model', 2, 'bad');
         $this->store->storeBatch([$this->embedded('bad', 'tenant-a', 'docs', $space, [1,0])]);
+    }
+    public function testBatchStatementIsAtomicWhenOneRowFails(): void
+    {
+        $space = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'atomic');
+        try {
+            $this->store->storeBatch([
+                $this->embedded('duplicate', 'tenant-a', 'docs', $space, $this->vector(0)),
+                $this->embedded('duplicate', 'tenant-a', 'docs', $space, $this->vector(1)),
+            ]);
+            self::fail('Expected PostgreSQL to reject affecting the same conflict key twice.');
+        } catch (\Throwable) {
+            self::assertSame(0, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE chunk_id='duplicate'")->fetchColumn());
+        }
     }
     private function embedded(string $id, string $tenant, string $collection, EmbeddingSpace $space, array $values): EmbeddedChunk
     {
