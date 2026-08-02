@@ -20,6 +20,8 @@ public function split(Document $document): iterable;
 
 O loader produz `Document` incrementalmente; o splitter produz `Chunk` na ordem do documento. O fingerprint identifica algoritmo e configurações que alteram os chunks e participa de `DocumentVersion`. `TextFileLoader` e `RecursiveTextSplitter` são as implementações incluídas.
 
+Para PDF textual, `PdfTextExtractor::extract(string): iterable<ExtractedPdfPage>` separa extração física da criação de documentos. `PopplerPdfTextExtractor` usa `pdftotext` e `PdfDocumentLoader` agrupa páginas em janelas antes de produzir `Document`. OCR não está incluído.
+
 ### `EmbeddingProvider`
 
 ```text

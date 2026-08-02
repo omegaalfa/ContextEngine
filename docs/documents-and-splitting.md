@@ -57,6 +57,22 @@ final readonly class ArticleLoader implements DocumentLoader
 }
 ```
 
+## PDF textual
+
+`PdfDocumentLoader` recebe um `PdfTextExtractor`, preserva os números físicos das páginas e agrupa páginas em janelas configuráveis antes do splitter. A implementação Poppler incluída chama `pdftotext` sem shell; o binário é provisionado pela aplicação e não é dependência Composer do núcleo.
+
+```php
+$loader = new PdfDocumentLoader(
+    path: '/data/book.pdf',
+    tenantId: 'tenant-42',
+    extractor: new PopplerPdfTextExtractor(),
+    pagesPerDocument: 3,
+);
+
+$report = $context->ingestion->ingest($loader);
+```
+
+Veja [Ingestão de PDF](pdf-ingestion.md) para instalação, metadata, markers, segurança, limites e PDFs escaneados.
 ## RecursiveTextSplitter
 
 Assinatura: `__construct(int $chunkSize = 1000, int $overlap = 150, TextNormalizer $normalizer = new TextNormalizer())`, `fingerprint(): string` e `split(Document $document): iterable<Chunk>`.

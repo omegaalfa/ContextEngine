@@ -110,9 +110,10 @@ Exemplos executáveis:
 ```bash
 php examples/simple-ingestion.php
 php examples/simple-search.php "Em quanto tempo posso solicitar um reembolso?"
+php examples/simple-rag.php "Em quanto tempo posso solicitar um reembolso?"
 ```
 
-O segundo comando faz somente retrieval vetorial e mostra os chunks encontrados; nenhuma LLM é chamada.
+`simple-ingestion.php` usa o Bootstrap tipado e aceita opcionalmente o caminho de outro arquivo como primeiro argumento. O segundo comando faz somente retrieval vetorial e mostra os chunks encontrados; a LLM é chamada apenas pelo terceiro comando.
 
 ## ⚡ Composição pronta e tipada
 
@@ -139,6 +140,15 @@ $answer = $context->rag->ask(
 ```
 
 A factory do modelo recebe o mesmo `AsyncHttpClient` usado pelo provider de embeddings. Por isso, embeddings e LLM compartilham exatamente um `FiberEventLoop`, sem expor loop, HTTP client ou infraestrutura na API pública. O contexto também oferece `$context->retriever`, `$context->ingestion`, `$context->embeddings` e `$context->store` com autocomplete e tipos explícitos.
+
+| Operação | Embeddings | Vector store | Language model |
+|---|---:|---:|---:|
+| `$context->ingestion->ingest(...)` | ✅ | ✅ | não é chamada |
+| `$context->retriever->retrieve(...)` | ✅ | ✅ | não é chamada |
+| `$context->rag->ask(...)` | ✅ | ✅ | ✅ |
+
+> [!IMPORTANT]
+> A `languageModelFactory` é executada na criação do contexto, então sua configuração é validada imediatamente. Entretanto, a requisição HTTP ao Gemini, Ollama ou OpenAI só ocorre em `$context->rag->ask()`. Veja o [guia visual do Bootstrap](docs/bootstrap.md) para o fluxo completo e exemplos de troca de provider.
 
 Veja o exemplo executável em [`examples/simple-rag.php`](examples/simple-rag.php) e a explicação completa em [Bootstrap tipado](docs/bootstrap.md).
 
@@ -209,6 +219,7 @@ foreach ($answer->sources as $source) {
 - **Cache:** `CachedEmbeddingProvider` e `CachedLanguageModel`, ambos PSR-16.
 - **Concorrência:** `FiberBatchEmbeddingExecutor`, sem `Future` na API pública. Providers baseados em `AsyncHttpClient` compartilham com o executor uma única instância de `FiberEventLoop` criada no bootstrap.
 - **Streaming:** contrato independente, sem provider incremental incluído atualmente.
+- **PDF textual:** `PdfDocumentLoader` com janelas configuráveis e `PopplerPdfTextExtractor` opcional via binário `pdftotext`.
 
 O pacote inclui `GeminiLanguageModel` para respostas completas. Embeddings Gemini e outros recursos do fornecedor continuam extensíveis pelos contratos públicos.
 
@@ -223,8 +234,8 @@ O pacote inclui `GeminiLanguageModel` para respostas completas. Embeddings Gemin
 ### Ainda não implementado
 
 - busca híbrida, reranking e streaming incremental;
-- loaders estruturados adicionais;
-- adapter Gemini e LLM Ollama.
+- OCR para PDFs escaneados e análise automática de capítulos;
+- loaders estruturados para HTML, Markdown e formatos de escritório.
 
 ### Infraestrutura
 
@@ -242,6 +253,7 @@ Veja [Limitações e escopo](docs/limitations.md) para os impactos práticos.
 | Entender módulos e dependências | [Arquitetura](docs/architecture.md) |
 | Consultar termos centrais | [Conceitos](docs/core-concepts.md) |
 | Configurar fornecedores | [Providers](docs/providers.md) |
+| Ingerir livros e PDFs textuais | [Ingestão de PDF](docs/pdf-ingestion.md) |
 | Configurar decorators | [Cache](docs/caching.md) |
 | Criar adapters próprios | [Extensão](docs/extension-guide.md) |
 | Diagnosticar problemas | [Troubleshooting](docs/troubleshooting.md) |

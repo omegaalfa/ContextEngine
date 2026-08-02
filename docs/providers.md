@@ -100,10 +100,9 @@ use Omegaalfa\ContextEngine\Provider\Gemini\GeminiLanguageModel;
 
 $model = new GeminiLanguageModel(
     apiKey: (string) getenv('GEMINI_API_KEY'),
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     client: $http,
     generationConfig: [
-        'temperature' => 0.2,
         'maxOutputTokens' => 1_024,
     ],
 );

@@ -4,7 +4,7 @@
 |---|---|
 | 🚀 Começar | [Primeiros passos — guia completo](getting-started.md) · [Instalação](installation.md) |
 | 🧭 Design | [Arquitetura](architecture.md) · [Conceitos](core-concepts.md) · [API](api-reference.md) |
-| 📚 Conhecimento | [Documentos e splitters](documents-and-splitting.md) · [Ingestão](ingestion.md) · [Embeddings](embeddings.md) |
+| 📚 Conhecimento | [Documentos e splitters](documents-and-splitting.md) · [Ingestão](ingestion.md) · [PDF](pdf-ingestion.md) · [Embeddings](embeddings.md) |
 | 🧠 RAG | [Vector store](vector-store.md) · [Schema](database-schema.md) · [Retrieval](retrieval.md) · [Pipeline RAG](rag-pipeline.md) |
 | 🔌 Infra | [Providers](providers.md) · [Cache](caching.md) · [Concorrência](concurrency.md) · [Streaming](streaming.md) |
 | 🛡️ Operação | [Erros](error-handling.md) · [Segurança](security.md) · [Performance](performance.md) · [Troubleshooting](troubleshooting.md) · [Limitações](limitations.md) |

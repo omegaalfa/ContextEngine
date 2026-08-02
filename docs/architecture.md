@@ -137,7 +137,7 @@ Contém `IngestionPipeline`, `DocumentVersion`, `IngestionState`, `IngestionRepo
 
 ### `Loader`
 
-Contém adaptadores de entrada, atualmente `TextFileLoader`. Existe para converter uma fonte externa em um fluxo de `Document`. Depende do contrato `DocumentLoader` e de `Document`; a ingestão depende apenas do contrato. Nunca deve dividir texto, gerar embedding, controlar concorrência ou persistir dados.
+Contém adaptadores de entrada como `TextFileLoader` e o módulo `Loader/Pdf`. Existe para converter fontes externas em fluxos de `Document`. PDF separa `PdfTextExtractor`, página física e janela de documentos; Poppler permanece um detalhe do adapter. A ingestão depende apenas de `DocumentLoader`. Loader nunca deve gerar embedding, controlar concorrência ou persistir dados.
 
 ### `Prompt`
 
@@ -421,7 +421,7 @@ Ainda não fazem parte do núcleo:
 - streaming SSE/chunked oficial nos providers atuais;
 - reranking lexical, neural ou cross-encoder;
 - busca híbrida vetorial + full-text;
-- loaders estruturados para PDF, HTML, Markdown, bancos e object storage;
+- OCR e análise estrutural para PDF; loaders HTML, Markdown, bancos e object storage;
 - splitters baseados em tokens, semântica ou estrutura de código;
 - filtros arbitrários de metadata além do escopo atual;
 - observabilidade padronizada com métricas, tracing e eventos;

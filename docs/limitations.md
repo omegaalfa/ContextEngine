@@ -21,7 +21,7 @@ Isso não significa que o código seja apenas um protótipo; significa que adoç
 
 ## Recursos ainda não implementados
 
-- loaders nativos para PDF, HTML, Markdown ou object storage;
+- OCR para PDFs escaneados e loaders para HTML, Markdown ou object storage;
 - busca híbrida entre full-text e vetor;
 - reranking de resultados;
 - provider Gemini;

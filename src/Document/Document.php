@@ -9,7 +9,14 @@ use InvalidArgumentException;
 final readonly class Document
 {
     /** @param array<string, scalar|null> $metadata */
-    public function __construct(public string $id, public string $tenantId, public string $content, public array $metadata = [], public string $collection = 'default', public string $status = 'active')
+    public function __construct(
+        public string $id,
+        public string $tenantId,
+        public string $content,
+        public array  $metadata = [],
+        public string $collection = 'default',
+        public string $status = 'active'
+    )
     {
         if (trim($id) === '' || trim($tenantId) === '') {
             throw new InvalidArgumentException('Document id and tenant id cannot be empty.');
