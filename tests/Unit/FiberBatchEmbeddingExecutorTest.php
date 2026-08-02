@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Tests\Unit;
 
 use Fiber;
+use Generator;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Embedding\{Embedding,EmbeddingBatchRequest,EmbeddingSpace};
@@ -12,6 +13,7 @@ use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor
 use Omegaalfa\ContextEngine\Ingestion\BatchWindowException;
 use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class FiberBatchEmbeddingExecutorTest extends TestCase
 {
@@ -93,7 +95,7 @@ final class FiberBatchEmbeddingExecutorTest extends TestCase
             [new Chunk('c2', 'd', 't', 'text2', 2)],
         ];
         $results = new FiberBatchEmbeddingExecutor(new FiberEventLoop(), 3)->execute($batches, $provider);
-        self::assertInstanceOf(\Generator::class, $results);
+        self::assertInstanceOf(Generator::class, $results);
         $results->rewind();
         self::assertSame(3, $provider->maximumActive);
         unset($results);
@@ -139,7 +141,7 @@ final class SuspendingProvider implements EmbeddingProvider
         $sequence = $request->metadata['batch_sequence'] ?? -1;
         $this->active--;
         if ($sequence === $this->failAt) {
-            throw new \RuntimeException('boom');
+            throw new RuntimeException('boom');
         }return array_map(fn () => new Embedding([1], $this->space()), $request->texts);
     }
 }

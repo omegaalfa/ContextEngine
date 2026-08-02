@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Tests\Integration;
 
 use Omegaalfa\ContextEngine\Chunk\Chunk;
+use Omegaalfa\ContextEngine\Document\Document;
 use Omegaalfa\ContextEngine\Embedding\{EmbeddedChunk,Embedding,EmbeddingSpace};
+use Omegaalfa\ContextEngine\Ingestion\DocumentVersion;
+use PDO;
+use Throwable;
 use Omegaalfa\ContextEngine\Retrieval\{VectorSearchQuery};
 use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
@@ -18,7 +22,7 @@ use PHPUnit\Framework\TestCase;
 
 final class PgVectorIntegrationTest extends TestCase
 {
-    private \PDO $pdo;
+    private PDO $pdo;
     private PgVectorStore $store;
     private QueryBuilder $query;
     protected function setUp(): void
@@ -37,7 +41,7 @@ final class PgVectorIntegrationTest extends TestCase
             $this->pdo = $connection->pdo();
             $this->query = new QueryBuilder($connection);
             $this->store = new PgVectorStore($this->query);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             self::fail('Pgvector integration is enabled but service/configuration is unavailable: '.$e->getMessage());
         }
         $missing = $this->missingColumns();
@@ -66,19 +70,44 @@ final class PgVectorIntegrationTest extends TestCase
     {
         $space = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'plain');
         $this->query->insert('context_chunks', [
-            'chunk_id' => 'plain', 'document_id' => 'doc', 'tenant_id' => 'tenant', 'collection' => 'docs', 'status' => 'active', 'content' => 'plain insert', 'position' => 0, 'metadata' => '{}',
+            'chunk_id' => 'plain', 'document_id' => 'doc', 'document_version' => 'plain-version', 'ingestion_state' => 'active', 'tenant_id' => 'tenant', 'collection' => 'docs', 'status' => 'active', 'content' => 'plain insert', 'position' => 0, 'metadata' => '{}',
             'embedding' => new Vector($this->vector(0), 1024), 'embedding_provider' => $space->provider, 'embedding_model' => $space->model, 'embedding_dimensions' => 1024, 'embedding_revision' => $space->revision, 'embedding_space_fingerprint' => $space->fingerprint(),
         ]);
         $this->query->execute();
         self::assertSame(1, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE chunk_id='plain'")->fetchColumn());
-        $columns = $this->pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name='context_chunks'")->fetchAll(\PDO::FETCH_COLUMN);
+        $columns = $this->pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name='context_chunks'")->fetchAll(PDO::FETCH_COLUMN);
         self::assertNotContains('id', $columns);
     }
     public function testDatabaseRejectsIncompatibleDimension(): void
     {
-        $this->expectException(\Throwable::class);
+        $this->expectException(Throwable::class);
         $space = new EmbeddingSpace('fake', 'model', 2, 'bad');
         $this->store->storeBatch([$this->embedded('bad', 'tenant-a', 'docs', $space, [1,0])]);
+    }
+    public function testStagedVersionIsInvisibleAndActivationAtomicallyReplacesPreviousVersion(): void
+    {
+        $space = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'versions');
+        $old = new DocumentVersion(new Document('versioned-doc', 'tenant-a', 'old document', collection: 'docs'), $space, 'splitter-v1');
+        $new = new DocumentVersion(new Document('versioned-doc', 'tenant-a', 'new document', collection: 'docs'), $space, 'splitter-v1');
+
+        $this->store->beginVersion($old);
+        $this->store->stageBatch($old, [$this->embeddedForDocument('old-chunk', 'versioned-doc', 'tenant-a', 'docs', $space, $this->vector(0))]);
+        $this->store->activateVersion($old);
+
+        $this->store->beginVersion($new);
+        $this->store->stageBatch($new, [$this->embeddedForDocument('new-chunk', 'versioned-doc', 'tenant-a', 'docs', $space, $this->vector(0))]);
+        $beforeActivation = $this->store->search(new VectorSearchQuery('tenant-a', new Embedding($this->vector(0), $space), collection: 'docs'));
+        self::assertSame('old-chunk', $beforeActivation[0]->chunk->id);
+
+        $this->store->failVersion($new);
+        self::assertSame('old-chunk', $this->store->search(new VectorSearchQuery('tenant-a', new Embedding($this->vector(0), $space), collection: 'docs'))[0]->chunk->id);
+
+        $this->store->beginVersion($new);
+        $this->store->stageBatch($new, [$this->embeddedForDocument('new-chunk', 'versioned-doc', 'tenant-a', 'docs', $space, $this->vector(0))]);
+        $this->store->activateVersion($new);
+        self::assertSame('new-chunk', $this->store->search(new VectorSearchQuery('tenant-a', new Embedding($this->vector(0), $space), collection: 'docs'))[0]->chunk->id);
+        self::assertSame(1, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE document_id='versioned-doc' AND ingestion_state='active'")->fetchColumn());
+        self::assertSame(1, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE document_id='versioned-doc' AND ingestion_state='superseded'")->fetchColumn());
     }
     public function testBatchStatementIsAtomicWhenOneRowFails(): void
     {
@@ -89,7 +118,7 @@ final class PgVectorIntegrationTest extends TestCase
                 $this->embedded('duplicate', 'tenant-a', 'docs', $space, $this->vector(1)),
             ]);
             self::fail('Expected PostgreSQL to reject affecting the same conflict key twice.');
-        } catch (\Throwable) {
+        } catch (Throwable) {
             self::assertSame(0, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE chunk_id='duplicate'")->fetchColumn());
         }
     }
@@ -114,6 +143,9 @@ final class PgVectorIntegrationTest extends TestCase
         self::assertSame(2, (int)$this->pdo->query('SELECT count(*) FROM context_chunks')->fetchColumn());
         self::assertSame(1, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE tenant_id='tenant-b' AND collection='docs'")->fetchColumn());
         self::assertSame(1, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE tenant_id='tenant-a' AND collection='private'")->fetchColumn());
+
+        self::assertSame(1, $this->store->deleteDocument(new DocumentDeleteQuery('tenant-a')));
+        self::assertSame(1, (int)$this->pdo->query('SELECT count(*) FROM context_chunks')->fetchColumn(), 'Tenant-wide deletion must not affect another tenant.');
     }
     private function embedded(string $id, string $tenant, string $collection, EmbeddingSpace $space, array $values): EmbeddedChunk
     {
@@ -132,9 +164,9 @@ final class PgVectorIntegrationTest extends TestCase
     }
     private function missingColumns(): array
     {
-        $required = ['chunk_id','tenant_id','collection','status','embedding','embedding_provider','embedding_model','embedding_dimensions','embedding_revision','embedding_space_fingerprint'];
+        $required = ['chunk_id','document_version','ingestion_state','tenant_id','collection','status','embedding','embedding_provider','embedding_model','embedding_dimensions','embedding_revision','embedding_space_fingerprint'];
         $statement = $this->pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='context_chunks'");
-        $columns = $statement === false ? [] : $statement->fetchAll(\PDO::FETCH_COLUMN);
+        $columns = $statement === false ? [] : $statement->fetchAll(PDO::FETCH_COLUMN);
         return array_values(array_diff($required, $columns));
     }
 }

@@ -6,7 +6,7 @@ O `VectorStore` é a porta entre o ContextEngine e qualquer mecanismo de persist
 
 ```text
                     ┌──────────────────────────┐
-IngestionPipeline ─▶│                          │─▶ storeBatch()
+IngestionPipeline ─▶│                          │─▶ begin/stage/activate
 Retriever ─────────▶│       VectorStore        │─▶ search()
 Aplicação ─────────▶│                          │─▶ deleteChunk()
                     │                          │─▶ deleteDocument()
@@ -19,7 +19,7 @@ Aplicação ─────────▶│                          │─▶
                       PostgreSQL + pgvector
 ```
 
-O pacote inclui `PgVectorStore`. Outros bancos podem ser integrados implementando o mesmo contrato e preservando suas garantias.
+O pacote inclui `PgVectorStore`. Outros bancos podem implementar `VectorStore`; para participar do `IngestionPipeline`, também precisam implementar `VersionedVectorStore` e preservar o ciclo staged/active.
 
 ---
 
@@ -28,9 +28,13 @@ O pacote inclui `PgVectorStore`. Outros bancos podem ser integrados implementand
 | Operação | Responsabilidade | Escopo mínimo obrigatório |
 |---|---|---|
 | `storeBatch()` | Gravar ou atualizar chunks vetorizados atomicamente | tenant + collection + espaço do próprio lote |
+| `beginVersion()` | Preparar uma tentativa idempotente sem tocar na versão ativa | tenant + collection + documento + espaço + versão |
+| `stageBatch()` | Persistir um lote ainda invisível ao retrieval | escopo completo da versão |
+| `activateVersion()` | Trocar atomicamente a versão pesquisável | documento + espaço |
+| `failVersion()` | Marcar a tentativa incompleta sem ocultar a versão anterior | versão staged |
 | `search()` | Encontrar chunks semanticamente próximos | tenant + status + espaço; collection quando definida |
 | `deleteChunk()` | Remover uma versão exata de um chunk | tenant + collection + chunk + espaço |
-| `deleteDocument()` | Remover um documento em um espaço ou em todos | tenant + collection + documento |
+| `deleteDocument()` | Remover vetores usando filtros opcionais de collection, documento e espaço | tenant |
 | `clearCollection()` | Esvaziar uma collection do tenant | tenant + collection |
 
 Não existe operação para apagar a tabela inteira ou todos os tenants.
@@ -46,6 +50,7 @@ tenant_id
   + collection
   + chunk_id
   + embedding_space_fingerprint
+  + document_version
 ```
 
 Essa identidade é a chave primária da fixture oficial:
@@ -55,17 +60,25 @@ PRIMARY KEY (
     tenant_id,
     collection,
     chunk_id,
-    embedding_space_fingerprint
+    embedding_space_fingerprint,
+    document_version
 )
 ```
 
 Consequências práticas:
 
-- reingerir o mesmo chunk no mesmo espaço atualiza a linha;
+- reingerir a mesma versão do chunk no mesmo espaço atualiza a linha;
 - outro tenant cria uma linha independente;
 - outra collection cria uma linha independente;
 - outro modelo, dimensão, provider ou configuração cria outra versão;
 - nenhuma API depende de `BIGSERIAL`, sequence ou ID técnico.
+
+`document_version` é um SHA-256 determinístico do tenant, collection, documento, conteúdo, metadata ordenada, status editorial, fingerprint do `EmbeddingSpace` e fingerprint do splitter. Assim, mudanças de conteúdo, vetorização ou chunking criam versões isoladas, e a versão ativa pode coexistir com uma nova versão staged.
+
+| Campo | Exemplos | Responsabilidade |
+|---|---|---|
+| `status` | `active`, `draft`, `archived` | Estado editorial definido pela aplicação. |
+| `ingestion_state` | `staged`, `active`, `failed`, `superseded` | Visibilidade técnica da versão na engine. |
 
 ```text
 chunk “política-1”
@@ -180,7 +193,15 @@ doUpdate(content, metadata, status, embedding)
 execute()
 ```
 
-A atomicidade vale dentro de cada batch. A ingestão completa permanece incremental: batches persistidos antes de uma falha continuam duráveis e aparecem no relatório parcial.
+A atomicidade vale dentro de cada batch. No `IngestionPipeline`, os batches são duráveis como `staged`, mas não aparecem na busca. Somente após o último lote uma transação curta marca a versão anterior como `superseded` e a nova como `active`. Nenhuma transação permanece aberta durante HTTP.
+
+```text
+versão atual (active) ───────────────────────── pesquisável
+nova: begin → staged batches → activate (transação curta)
+              │ falha                 │
+              ▼                       ▼
+            failed          anterior superseded + nova active
+```
 
 ---
 
@@ -223,6 +244,7 @@ Antes do `LIMIT`, o SQL filtra:
 tenant
 + collection, quando definida
 + status
++ ingestion_state = active
 + provider
 + model
 + dimensions
@@ -259,7 +281,20 @@ Essa chamada não remove:
 
 ---
 
-## 📄 Removendo um documento
+## 📄 Exclusão flexível com DocumentDeleteQuery
+
+`tenantId` é o único parâmetro obrigatório. `collection`, `documentId` e `space` são filtros opcionais e independentes:
+
+```php
+new DocumentDeleteQuery(
+    tenantId: 'empresa-a',
+    collection: null,
+    documentId: null,
+    space: null,
+);
+```
+
+Quanto menos filtros forem informados, maior será o alcance da exclusão.
 
 ### Somente uma versão vetorial
 
@@ -286,12 +321,39 @@ $removed = $store->deleteDocument(new DocumentDeleteQuery(
 ));
 ```
 
-Omitir `space` é uma decisão explícita: remove todas as versões do documento, mas continua limitado ao tenant e à collection.
+Omitir `space` remove todas as versões do documento. Neste exemplo, collection e documento continuam delimitando a operação.
 
-| `space` | Comportamento |
+### Outras combinações
+
+```php
+// Mesmo documentId em todas as collections do tenant.
+$store->deleteDocument(new DocumentDeleteQuery(
+    tenantId: 'empresa-a',
+    documentId: 'politica-reembolso',
+));
+
+// Todos os vetores de uma collection em um espaço específico.
+$store->deleteDocument(new DocumentDeleteQuery(
+    tenantId: 'empresa-a',
+    collection: 'financeiro',
+    space: $space,
+));
+
+// Todos os vetores do tenant, em todas as collections e espaços.
+$store->deleteDocument(new DocumentDeleteQuery(
+    tenantId: 'empresa-a',
+));
+```
+
+| Filtros informados | Comportamento |
 |---|---|
-| `EmbeddingSpace` informado | remove somente aquela versão |
-| `null`/omitido | remove todas as versões do documento no escopo |
+| tenant + collection + documento + espaço | remove uma versão vetorial do documento |
+| tenant + collection + documento | remove todas as versões do documento naquela collection |
+| tenant + documento | remove o documento em todas as collections e espaços do tenant |
+| tenant + collection + espaço | remove todos os documentos daquela collection no espaço |
+| somente tenant | remove todos os vetores pertencentes ao tenant |
+
+> ⚠️ `new DocumentDeleteQuery($tenantId)` é uma exclusão ampla. O ContextEngine garante que outro tenant não seja atingido, mas confirmação, autorização e auditoria pertencem à aplicação.
 
 ---
 
@@ -321,10 +383,10 @@ Use-a somente depois de autorização explícita da aplicação. O ContextEngine
 |---|:---:|:---:|:---:|:---:|
 | `search()` | obrigatório | opcional/configurado | — | obrigatório |
 | `deleteChunk()` | obrigatório | obrigatório | chunk obrigatório | obrigatório |
-| `deleteDocument()` | obrigatório | obrigatório | documento obrigatório | opcional |
+| `deleteDocument()` | obrigatório | opcional | documento opcional | opcional |
 | `clearCollection()` | obrigatório | obrigatório | — | todos |
 
-Todos os valores vazios são rejeitados durante a construção da query, antes de qualquer SQL.
+Tenant vazio é sempre rejeitado. Filtros opcionais podem ser `null`, mas, quando informados, não podem ser strings vazias.
 
 ---
 
@@ -334,27 +396,43 @@ Todos os valores vazios são rejeitados durante a construção da query, antes d
 - falhas do banco são propagadas pelo adapter;
 - as operações não abrem transações durante chamadas HTTP;
 - excluir vetores não invalida automaticamente caches PSR-16 de embeddings ou respostas;
-- nenhuma exclusão física é executada automaticamente durante a ingestão;
-- reingerir um documento não remove chunks antigos que deixaram de ser produzidos.
-
-O último ponto é importante: o UPSERT torna identidades existentes idempotentes, mas substituição atômica de documento e coleta de chunks obsoletos continuam sendo políticas da aplicação/roadmap.
+- versões anteriores permanecem como `superseded`; retenção e exclusão física são políticas explícitas da aplicação;
+- uma falha deixa a tentativa como `failed`, invisível ao retrieval; a execução seguinte limpa esses remanescentes determinísticos antes de recomeçar.
 
 ---
 
 ## 🧩 Implementando outro VectorStore
 
 ```php
-use Omegaalfa\ContextEngine\Contract\VectorStore;
+use Omegaalfa\ContextEngine\Contract\VersionedVectorStore;
+use Omegaalfa\ContextEngine\Ingestion\DocumentVersion;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
 use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
 
-final class CustomVectorStore implements VectorStore
+final class CustomVectorStore implements VersionedVectorStore
 {
     public function storeBatch(array $chunks): void
     {
         // Persistir o batch inteiro atomicamente.
+    }
+
+    public function beginVersion(DocumentVersion $version): void {}
+
+    public function stageBatch(DocumentVersion $version, array $chunks): void
+    {
+        // Persistir como staged, sem torná-los pesquisáveis.
+    }
+
+    public function activateVersion(DocumentVersion $version): void
+    {
+        // Transação curta: anterior superseded + atual active.
+    }
+
+    public function failVersion(DocumentVersion $version): void
+    {
+        // Nunca modificar a versão active anterior.
     }
 
     public function search(VectorSearchQuery $query): array
@@ -389,6 +467,8 @@ Uma implementação compatível deve preservar:
 5. exclusões limitadas pelos objetos de escopo;
 6. retorno correto da quantidade removida;
 7. ausência de tipos específicos do banco nos contratos públicos.
+8. retrieval exclusivamente sobre versões `active`;
+9. ativação atômica e nenhuma transação durante chamadas remotas.
 
 ---
 

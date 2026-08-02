@@ -22,6 +22,11 @@ final readonly class RecursiveTextSplitter implements TextSplitter
         }
     }
 
+    public function fingerprint(): string
+    {
+        return hash('sha256', implode("\0", ['recursive-text-splitter', '2', (string)$this->chunkSize, (string)$this->overlap]));
+    }
+
     /** @return iterable<Chunk> */
     public function split(Document $document): iterable
     {

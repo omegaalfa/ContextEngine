@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Infrastructure\Ingestion;
 
+use InvalidArgumentException;
 use LogicException;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\BatchEmbeddingExecutor;
@@ -22,7 +23,7 @@ final readonly class FiberBatchEmbeddingExecutor implements BatchEmbeddingExecut
     public function __construct(private FiberEventLoop $loop, private int $concurrency = 4)
     {
         if ($concurrency < 1) {
-            throw new \InvalidArgumentException('Concurrency must be positive.');
+            throw new InvalidArgumentException('Concurrency must be positive.');
         }
     }
 

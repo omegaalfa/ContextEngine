@@ -7,7 +7,7 @@
 - Não há migrations, criação automática de tabela/extensão ou gestão de índices.
 - Conteúdo é duplicado quando o mesmo chunk existe em espaços diferentes.
 - `TextFileLoader` é o único loader incluído.
-- OpenAI/Ollama são os únicos providers de embedding incluídos; LLM incluída é OpenAI buffered.
+- OpenAI/Ollama são os providers de embedding incluídos; as LLMs OpenAI e Ollama são buffered.
 - Não há reranking, busca híbrida ou filtros arbitrários de metadata.
 
 ## Possíveis evoluções

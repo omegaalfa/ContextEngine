@@ -97,6 +97,10 @@ A ingestão e a consulta são fluxos separados. A ingestão produz estado vetori
 
 ## 2. Organização do projeto
 
+### `Bootstrap`
+
+É o composition root opcional da distribuição padrão Ollama + pgvector. Constrói conexão, store, provider, executor, retrieval e RAG com um único `FiberEventLoop`, por composição direta e explícita. Depende de contratos e adapters concretos porque pertence à borda de infraestrutura; aplicações dependem somente do `ContextEngineContext` tipado retornado. Nunca deve colocar tenant da requisição em configuração global, revelar configuração com senha, agir como Service Locator ou mover lógica de domínio para factories.
+
 ### `Cache`
 
 Contém decorators PSR-16 para embeddings e respostas de LLM. Existe para adicionar cache por composição, sem colocar lógica de cache nos providers ou no domínio. Depende dos contratos, dos objetos de embedding/prompt e de `Psr\SimpleCache\CacheInterface`; providers e aplicações podem depender desses decorators. Nunca deve conhecer PgVector, QueryBuilder, Futures ou regras de persistência. Cache não é fonte de verdade.
@@ -107,7 +111,7 @@ Contém `Chunk`, a unidade lógica de conteúdo persistida e recuperada. Existe 
 
 ### `Contract`
 
-Define as portas da biblioteca: `DocumentLoader`, `TextSplitter`, `EmbeddingProvider`, `BatchEmbeddingExecutor`, `VectorStore`, `LanguageModel`, `CacheableLanguageModel` e `StreamingLanguageModel`. Existe para inverter dependências: orquestradores conhecem capacidades, não implementações. Depende de objetos de domínio usados nas assinaturas; aplicação e infraestrutura dependem dos contratos. Nunca deve mencionar PDO, QueryBuilder, HttpClient, pgvector, Redis, `Future` ou detalhes de um fornecedor.
+Define as portas da biblioteca: `DocumentLoader`, `TextSplitter`, `EmbeddingProvider`, `BatchEmbeddingExecutor`, `VectorStore`, `VersionedVectorStore`, `LanguageModel`, `CacheableLanguageModel` e `StreamingLanguageModel`. Existe para inverter dependências: orquestradores conhecem capacidades, não implementações. Depende de objetos de domínio usados nas assinaturas; aplicação e infraestrutura dependem dos contratos. Nunca deve mencionar PDO, QueryBuilder, HttpClient, pgvector, Redis, `Future` ou detalhes de um fornecedor.
 
 ### `Document`
 
@@ -129,7 +133,7 @@ Contém implementações técnicas que não pertencem ao domínio. Hoje abriga `
 
 ### `Ingestion`
 
-Contém `IngestionPipeline`, `IngestionReport`, `BatchEmbeddingResult` e `BatchWindowException`. É a camada de aplicação que coordena loader, splitter, batching, executor, provider e store. Depende somente das portas e objetos necessários ao caso de uso, embora ofereça o executor Fiber como padrão de construção. Nunca deve conhecer HTTP, Redis, SQL, PDO ou estruturas internas de um provider.
+Contém `IngestionPipeline`, `DocumentVersion`, `IngestionState`, `IngestionReport`, `BatchEmbeddingResult` e `BatchWindowException`. É a camada de aplicação que coordena loader, splitter, batching, executor, provider e store. Depende somente das portas e objetos necessários ao caso de uso. Nunca deve conhecer HTTP, Redis, SQL, PDO ou estruturas internas de um provider.
 
 ### `Loader`
 
@@ -177,12 +181,12 @@ Document → Chunk(s) → lote(s) → embedding(s) → validação
 5. **Embeddings.** `EmbeddingProvider::embedBatch()` processa exatamente um lote. A concorrência não pertence ao provider. O provider retorna uma lista ordenada de `Embedding`.
 6. **Conclusão e validação.** O executor aguarda cada operação, valida que o retorno é uma lista, que a cardinalidade corresponde aos chunks e que cada item é `Embedding`. `BatchEmbeddingResult` conserva a sequência, os chunks originais e os vetores, impedindo associação por ordem de conclusão HTTP.
 7. **Compatibilidade.** A pipeline compara o fingerprint de cada resultado com `EmbeddingProvider::space()`. Misturar provider, modelo, dimensão, revisão ou configuração falha antes da persistência.
-8. **Persistência serial.** Para cada resultado emitido, a pipeline monta `EmbeddedChunk[]` e chama `VectorStore::storeBatch()`. Nenhuma transação é aberta antes ou durante as chamadas HTTP; uma única conexão PDO não é usada concorrentemente.
-9. **Versionamento e idempotência.** `PgVectorStore` faz upsert pela identidade `(tenant_id, collection, chunk_id, embedding_space_fingerprint)`. Reexecutar o mesmo chunk no mesmo espaço atualiza a linha; mudar tenant, collection ou espaço cria uma versão independente.
+8. **Persistência serial e staged.** A pipeline cria uma `DocumentVersion`, chama `beginVersion()` e grava cada resultado com `stageBatch()`. As linhas são duráveis, mas invisíveis ao retrieval. Nenhuma transação é aberta antes ou durante HTTP.
+9. **Ativação e idempotência.** Depois do último lote, `activateVersion()` executa uma transação curta: a anterior vira `superseded` e a nova vira `active`. A identidade inclui `(tenant_id, collection, chunk_id, embedding_space_fingerprint, document_version)`.
 10. **Cache opcional.** Quando `CachedEmbeddingProvider` envolve o provider, ele consulta cada texto por tenant + espaço + hash exato, deduplica repetições, envia somente misses e recompõe a ordem. A pipeline não sabe se existe cache.
 11. **Relatório.** Ao sucesso, `IngestionReport` informa documentos, chunks e lotes processados/persistidos. Em falha, `IngestionException` contém um relatório parcial, documento, espaço e sequência.
 
-Se um lote falha no meio da janela, o executor drena as operações já iniciadas para liberar recursos, não abre nova janela e descarta resultados posteriores ao primeiro erro. Lotes já entregues e persistidos permanecem duráveis. A retomada é idempotente por causa do upsert composto.
+Se um lote falha no meio da janela, o executor drena operações iniciadas, não abre nova janela e descarta resultados posteriores ao primeiro erro. Lotes staged são marcados como `failed` e nunca aparecem na busca; a versão ativa anterior permanece disponível. A nova execução limpa a tentativa determinística incompleta e recomeça idempotentemente.
 
 ## 4. Fluxo completo de consulta (RAG)
 
@@ -280,24 +284,24 @@ Implemente somente quando o transporte entrega fragmentos antes da resposta comp
 A chave primária de domínio é:
 
 ```text
-(tenant_id, collection, chunk_id, embedding_space_fingerprint)
+(tenant_id, collection, chunk_id, embedding_space_fingerprint, document_version)
 ```
 
 Tenant e collection participam porque `chunk_id` não é assumido global entre todos os escopos. Não existe `BIGSERIAL` nem ID técnico público. O fingerprint identifica integralmente `EmbeddingSpace`; colunas separadas de provider, model, dimensions e revision continuam disponíveis para filtros e diagnóstico.
 
 ### UPSERT
 
-`storeBatch()` exige um lote de um único espaço, converte valores para o tipo `Vector` do QueryBuilder e executa `insertBatch()->onConflict(...)->doUpdate(...)->execute()`. Mesma identidade atualiza conteúdo, metadata, status e vetor. Espaço diferente nunca sobrescreve o anterior. Não há `RETURNING`, `lastInsertId()` ou dependência de sequence.
+`stageBatch()` exige um lote correspondente à `DocumentVersion`, converte valores para `Vector` e executa `insertBatch()->onConflict(...)->doUpdate(...)->execute()`. `activateVersion()` faz a troca de visibilidade em uma transação curta. Não há `RETURNING`, `lastInsertId()` ou dependência de sequence.
 
 ### Retrieval
 
-`RetrievalPolicy` define limite, `VectorMetric` e distância máxima opcional. A métrica pertence ao ContextEngine; o store a traduz para o enum do QueryBuilder. O SQL filtra tenant, status, provider, model, dimensions, revision, fingerprint e collection quando definida. Assim, vetores incompatíveis nem chegam à memória.
+`RetrievalPolicy` define limite, `VectorMetric` e distância máxima opcional. A métrica pertence ao ContextEngine; o store a traduz para o enum do QueryBuilder. O SQL filtra tenant, status, `ingestion_state = active`, provider, model, dimensions, revision, fingerprint e collection quando definida. Assim, versões incompletas e vetores incompatíveis nem chegam à memória.
 
 O schema de integração/desenvolvimento usa `vector(1024)` para o BGE-M3 via Ollama. Índices B-tree apoiam filtros de tenant/collection/status/espaço, enquanto o HNSW incluído atende à métrica cosseno. Outro modelo ou métrica pode exigir schema/índice correspondente; consulte [schema](database-schema.md) e [performance](performance.md).
 
 ### Exclusão
 
-O contrato separa `deleteChunk()`, `deleteDocument()` e `clearCollection()` para que uma omissão de filtro não se transforme em exclusão global. Tenant e collection são obrigatórios em todos os comandos. Chunk exige `EmbeddingSpace`; documento pode selecionar um espaço ou todas as suas versões; collection é apagada integralmente apenas por uma operação explicitamente nomeada. O retorno é sempre a quantidade de linhas afetadas.
+O contrato separa `deleteChunk()`, `deleteDocument()` e `clearCollection()`. Tenant é obrigatório em todos os comandos, portanto nenhuma exclusão atravessa tenants. Chunk exige collection e `EmbeddingSpace`. `DocumentDeleteQuery` permite combinar filtros opcionais de collection, documento e espaço; somente tenant representa deliberadamente todo o conteúdo daquele tenant. `clearCollection()` mantém uma forma curta e explicitamente nomeada para esse escopo frequente. O retorno é sempre a quantidade de linhas afetadas.
 
 ## 8. Concorrência
 

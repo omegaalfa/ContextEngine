@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Cache;
 
+use DateInterval;
+use InvalidArgumentException;
 use Omegaalfa\ContextEngine\Contract\CacheableLanguageModel;
 use Omegaalfa\ContextEngine\Prompt\ChatMessage;
 use Psr\SimpleCache\CacheInterface;
 
 final readonly class CachedLanguageModel implements CacheableLanguageModel
 {
-    public function __construct(private CacheableLanguageModel $model, private CacheInterface $cache, private string $tenantId, private string $promptVersion, private bool $enabled = false, private null|int|\DateInterval $ttl = null, private string $namespace = 'context_llm')
+    public function __construct(private CacheableLanguageModel $model, private CacheInterface $cache, private string $tenantId, private string $promptVersion, private bool $enabled = false, private null|int|DateInterval $ttl = null, private string $namespace = 'context_llm')
     {
         if (trim($tenantId) === '' || trim($promptVersion) === '') {
-            throw new \InvalidArgumentException('Tenant id and prompt version are required for response caching.');
+            throw new InvalidArgumentException('Tenant id and prompt version are required for response caching.');
         }
     }
     public function complete(array $messages): string

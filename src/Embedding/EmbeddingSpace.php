@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Embedding;
 
 use InvalidArgumentException;
+use JsonException;
 
 final readonly class EmbeddingSpace
 {
@@ -81,7 +82,7 @@ final readonly class EmbeddingSpace
     /**
      * @param mixed $value
      * @return string
-     * @throws \JsonException
+     * @throws JsonException
      */
     private static function canonical(mixed $value): string
     {

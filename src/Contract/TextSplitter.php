@@ -9,6 +9,9 @@ use Omegaalfa\ContextEngine\Document\Document;
 
 interface TextSplitter
 {
+    /** Stable identity of every setting that changes the produced chunks. */
+    public function fingerprint(): string;
+
     /**
      * @param Document $document
      * @return iterable<Chunk>

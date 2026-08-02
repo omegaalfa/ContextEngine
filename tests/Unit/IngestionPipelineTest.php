@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Tests\Unit;
 
-use Omegaalfa\ContextEngine\Contract\{BatchEmbeddingExecutor,DocumentLoader,EmbeddingProvider,TextSplitter,VectorStore};
+use Omegaalfa\ContextEngine\Contract\{BatchEmbeddingExecutor,DocumentLoader,EmbeddingProvider,TextSplitter,VersionedVectorStore};
+use Fiber;
+use InvalidArgumentException;
+use LogicException;
 use Omegaalfa\ContextEngine\Document\Document;
 use Omegaalfa\ContextEngine\Embedding\Embedding;
 use Omegaalfa\ContextEngine\Embedding\{EmbeddingBatchRequest,EmbeddingSpace};
 use Omegaalfa\ContextEngine\Exception\IngestionException;
 use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
-use Omegaalfa\ContextEngine\Ingestion\{BatchEmbeddingResult,BatchWindowException,IngestionPipeline};
+use Omegaalfa\ContextEngine\Ingestion\{BatchEmbeddingResult, BatchWindowException, DocumentVersion, IngestionPipeline};
 use Omegaalfa\ContextEngine\Ingestion\BatchExecutionProgress;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
 use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
@@ -19,6 +22,7 @@ use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
 use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class IngestionPipelineTest extends TestCase
 {
@@ -31,11 +35,11 @@ final class IngestionPipelineTest extends TestCase
             }
         };
         $provider = $this->provider();
-        $store = new class () implements VectorStore {
+        $store = new class () implements VersionedVectorStore {
             use VectorStoreDeletionStubs;
             public function storeBatch(array $chunks): void
             {
-                throw new \LogicException('must not persist');
+                throw new LogicException('must not persist');
             }public function search(VectorSearchQuery $query): array
             {
                 return [];
@@ -66,9 +70,10 @@ final class IngestionPipelineTest extends TestCase
                 return array_map(fn () => $this->embed('', $request->tenantId), $request->texts);
             }
         };
-        $store = new class () implements VectorStore {
+        $store = new class () implements VersionedVectorStore {
             use VectorStoreDeletionStubs;
             public array $sizes = [];
+            public int $activated = 0;
             public function storeBatch(array $chunks): void
             {
                 $this->sizes[] = count($chunks);
@@ -76,11 +81,17 @@ final class IngestionPipelineTest extends TestCase
             {
                 return [];
             }
+            public function activateVersion(DocumentVersion $version): void
+            {
+                $this->activated++;
+            }
         };
         $report = new IngestionPipeline(new RecursiveTextSplitter(30, 4), $embedding, $store, $this->executor(), 3)->ingest($loader);
         self::assertGreaterThan(3, $report->chunksPersisted);
         self::assertLessThanOrEqual(3, max($store->sizes));
         self::assertSame($report->chunksPersisted, array_sum($store->sizes));
+        self::assertSame(1, $store->activated);
+        self::assertSame(1, $report->documentsActivated);
     }
     public function testFinalIncompleteBatchIsPersisted(): void
     {
@@ -91,7 +102,7 @@ final class IngestionPipelineTest extends TestCase
             }
         };
         $provider = $this->provider();
-        $store = new class () implements VectorStore {
+        $store = new class () implements VersionedVectorStore {
             use VectorStoreDeletionStubs;
             public array $sizes = [];
             public function storeBatch(array $chunks): void
@@ -115,9 +126,10 @@ final class IngestionPipelineTest extends TestCase
             }
         };
         $provider = $this->provider();
-        $store = new class () implements VectorStore {
+        $store = new class () implements VersionedVectorStore {
             use VectorStoreDeletionStubs;
             public int $persisted = 0;
+            public bool $failed = false;
             public function storeBatch(array $chunks): void
             {
                 $this->persisted += count($chunks);
@@ -125,13 +137,17 @@ final class IngestionPipelineTest extends TestCase
             {
                 return [];
             }
+            public function failVersion(DocumentVersion $version): void
+            {
+                $this->failed = true;
+            }
         };
         $executor = new class () implements BatchEmbeddingExecutor {
             public function execute(iterable $batches, EmbeddingProvider $provider): iterable
             {
                 $batch = [...$batches][0];
                 yield new BatchEmbeddingResult(0, $batch, array_map(fn () => new Embedding([1], $provider->space()), $batch), new BatchExecutionProgress(3, 3, 1, 0, 3));
-                throw new BatchWindowException(1, [1,2], [2], [2], new BatchExecutionProgress(3, 3, 3, 1, 3), new \RuntimeException('provider failed'));
+                throw new BatchWindowException(1, [1,2], [2], [2], new BatchExecutionProgress(3, 3, 3, 1, 3), new RuntimeException('provider failed'));
             }
         };
         try {
@@ -148,12 +164,15 @@ final class IngestionPipelineTest extends TestCase
             self::assertSame('Embedding generation failed.', $e->partialReport->failure?->message);
             self::assertSame('provider failed', $e->getPrevious()?->getMessage());
             self::assertStringNotContainsString('provider failed', $e->getMessage());
+            self::assertTrue($store->failed);
+            self::assertSame(1, $e->partialReport->documentVersionsFailed);
+            self::assertSame(0, $e->partialReport->documentsActivated);
         }
     }
     public function testRejectsInvalidBatchSizeAtConstruction(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        new IngestionPipeline(new RecursiveTextSplitter(), $this->provider(), new class () implements VectorStore {
+        $this->expectException(InvalidArgumentException::class);
+        new IngestionPipeline(new RecursiveTextSplitter(), $this->provider(), new class () implements VersionedVectorStore {
             use VectorStoreDeletionStubs;
             public function storeBatch(array $chunks): void {}
             public function search(VectorSearchQuery $query): array
@@ -161,6 +180,52 @@ final class IngestionPipelineTest extends TestCase
                 return [];
             }
         }, $this->executor(), 0);
+    }
+    public function testDocumentWithoutChunksFailsWithoutActivation(): void
+    {
+        $loader = new class () implements DocumentLoader {
+            public function load(): iterable
+            {
+                yield new Document('empty-split', 'tenant', 'content');
+            }
+        };
+        $splitter = new class () implements TextSplitter {
+            public function fingerprint(): string
+            {
+                return 'empty-splitter-v1';
+            }
+            public function split(Document $document): iterable
+            {
+                return [];
+            }
+        };
+        $store = new class () implements VersionedVectorStore {
+            use VectorStoreDeletionStubs;
+            public bool $activated = false;
+            public bool $failed = false;
+            public function storeBatch(array $chunks): void {}
+            public function search(VectorSearchQuery $query): array
+            {
+                return [];
+            }
+            public function activateVersion(DocumentVersion $version): void
+            {
+                $this->activated = true;
+            }
+            public function failVersion(DocumentVersion $version): void
+            {
+                $this->failed = true;
+            }
+        };
+
+        try {
+            new IngestionPipeline($splitter, $this->provider(), $store, $this->executor())->ingest($loader);
+            self::fail('Expected ingestion failure.');
+        } catch (IngestionException $error) {
+            self::assertFalse($store->activated);
+            self::assertTrue($store->failed);
+            self::assertSame(0, $error->partialReport->chunksPersisted);
+        }
     }
     public function testPersistenceFailureIsSanitizedAndDrainsStartedEmbeddings(): void
     {
@@ -171,11 +236,11 @@ final class IngestionPipelineTest extends TestCase
             }
         };
         $provider = new SuspendingIngestionProvider();
-        $store = new class () implements VectorStore {
+        $store = new class () implements VersionedVectorStore {
             use VectorStoreDeletionStubs;
             public function storeBatch(array $chunks): void
             {
-                throw new \RuntimeException('database host and SQL must stay private');
+                throw new RuntimeException('database host and SQL must stay private');
             }
             public function search(VectorSearchQuery $query): array
             {
@@ -231,7 +296,7 @@ final class SuspendingIngestionProvider implements EmbeddingProvider
     public function embedBatch(EmbeddingBatchRequest $request): array
     {
         $this->active++;
-        \Fiber::suspend();
+        Fiber::suspend();
         $this->active--;
         return array_map(fn () => new Embedding([1], $this->space()), $request->texts);
     }
@@ -239,6 +304,17 @@ final class SuspendingIngestionProvider implements EmbeddingProvider
 
 trait VectorStoreDeletionStubs
 {
+    public function beginVersion(DocumentVersion $version): void {}
+
+    public function stageBatch(DocumentVersion $version, array $chunks): void
+    {
+        $this->storeBatch($chunks);
+    }
+
+    public function activateVersion(DocumentVersion $version): void {}
+
+    public function failVersion(DocumentVersion $version): void {}
+
     public function deleteChunk(ChunkDeleteQuery $query): int
     {
         return 0;

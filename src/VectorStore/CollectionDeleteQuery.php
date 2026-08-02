@@ -8,6 +8,10 @@ use InvalidArgumentException;
 
 final readonly class CollectionDeleteQuery
 {
+    /**
+     * @param string $tenantId
+     * @param string $collection
+     */
     public function __construct(public string $tenantId, public string $collection)
     {
         if (trim($tenantId) === '' || trim($collection) === '') {

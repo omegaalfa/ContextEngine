@@ -30,3 +30,15 @@ $results = $retriever->retrieve(new Question('Como configurar?', 'tenant-42'));
 Cosine compara direção e é comum para embeddings normalizados. L2 mede distância euclidiana; inner product favorece produto maior conforme a semântica pgvector; L1 soma diferenças absolutas. Use a métrica compatível com modelo e índice. `distance` não é probabilidade.
 
 Collection `null` omite esse filtro; tenant e status permanecem obrigatórios. `maximumDistance` é aplicado após as linhas compatíveis retornarem do banco, enquanto identidade/espaço são filtrados no SQL.
+
+## Exemplo executável
+
+Depois de executar `examples/simple-ingestion.php`, faça uma busca sem chamar LLM:
+
+```bash
+php examples/simple-search.php "Em quanto tempo posso solicitar um reembolso?"
+```
+
+O script usa por padrão tenant `empresa-exemplo`, collection `default`, Ollama `bge-m3`/1024 e o PostgreSQL do Compose. É possível alterar `CONTEXT_ENGINE_TENANT_ID`, `CONTEXT_ENGINE_COLLECTION`, `CONTEXT_ENGINE_OLLAMA_URL` e as variáveis `CONTEXT_ENGINE_PGVECTOR_*` pelo ambiente.
+
+O resultado apresenta distância, documento, chunk e conteúdo. Distância menor significa maior proximidade para a métrica cosseno utilizada; ela não representa porcentagem de confiança.

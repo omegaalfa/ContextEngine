@@ -91,7 +91,7 @@ Depois disso, injete a implementação nas pipelines exatamente como os provider
 ## Splitter, store e executor
 
 - `TextSplitter` deve propagar tenant/collection/status e produzir chunks válidos.
-- `VectorStore` deve filtrar tenant e espaço antes de limitar resultados, persistir cada batch atomicamente e aplicar tenant/collection em todas as exclusões. `deleteChunk()` não pode ignorar a identidade vetorial completa.
+- `VectorStore` deve filtrar tenant e espaço antes de limitar resultados, persistir cada batch atomicamente e aplicar tenant em todas as exclusões. Filtros opcionais de `DocumentDeleteQuery` só entram no comando quando informados; `deleteChunk()` não pode ignorar collection nem identidade vetorial completa.
 - `BatchEmbeddingExecutor` associa sequence, chunks e resultado, drena recursos em falha e não persiste.
 - Um decorator de cache deve implementar o mesmo contrato, delegar misses e nunca armazenar falhas/parciais.
 

@@ -7,6 +7,8 @@ namespace Omegaalfa\ContextEngine\Tests\Unit;
 use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\Provider\OpenAI\OpenAILanguageModel;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 
 final class ArchitectureTest extends TestCase
 {
@@ -17,7 +19,7 @@ final class ArchitectureTest extends TestCase
     public function testFutureAppearsOnlyInInfrastructureSource(): void
     {
         $root = dirname(__DIR__, 2).'/src';
-        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root));
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root));
         foreach ($iterator as $file) {
             if (!$file->isFile() || $file->getExtension() !== 'php') {
                 continue;

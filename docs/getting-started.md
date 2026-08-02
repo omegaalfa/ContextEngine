@@ -124,7 +124,7 @@ Os nomes técnicos são **ingestão**, **chunking**, **embeddings**, **busca vet
 
 **Para que serve.** Sem um coordenador, a aplicação teria de conectar manualmente loader, splitter, provider, concorrência, validação e persistência em toda execução. A pipeline garante que essas etapas ocorram na ordem correta e que falhas produzam um relatório consistente.
 
-**Como o ContextEngine usa.** `ingest($loader)` consome documentos incrementalmente, chama o splitter, envia batches ao `BatchEmbeddingExecutor`, associa cada embedding ao chunk correto e chama `VectorStore::storeBatch()` serialmente. Ao final retorna contadores; se algo falhar, `IngestionException` inclui o progresso parcial.
+**Como o ContextEngine usa.** `ingest($loader)` consome documentos incrementalmente, chama o splitter, envia batches ao `BatchEmbeddingExecutor`, associa cada embedding ao chunk correto e grava os lotes como `staged` por `VersionedVectorStore`. Ao terminar, ativa a nova versão atomicamente; se algo falhar, `IngestionException` inclui o progresso parcial e a versão anterior continua pesquisável.
 
 ### Pipeline
 
@@ -249,7 +249,7 @@ Mesmo representando a mesma palavra, os números vieram de mapas matemáticos di
 
 **Para que serve.** A engine não deve aprender endpoints, headers e formatos de todos os fornecedores. O provider isola essas diferenças como um adaptador de tomada: a aplicação troca o adaptador sem reconstruir o aparelho.
 
-**Como o ContextEngine usa.** Pipelines dependem de interfaces, não de OpenAI. O pacote oferece embeddings OpenAI/Ollama e respostas completas OpenAI. Gemini é compatível arquiteturalmente, mas ainda não possui adapter incluído.
+**Como o ContextEngine usa.** Pipelines dependem de interfaces, não de OpenAI. O pacote oferece embeddings OpenAI/Ollama e respostas completas OpenAI, Ollama e Gemini. Embeddings Gemini ainda exigem adapter próprio.
 
 ### Vector Store
 
@@ -340,7 +340,7 @@ O builder organiza instruções, separa pergunta e fontes, identifica chunks, re
 
 **Para que serve.** Os chunks recuperados são evidências brutas. O LLM organiza essas evidências numa resposta legível, seguindo as instruções do prompt.
 
-**Como o ContextEngine usa.** Depois de montar o prompt, `RagPipeline` chama `LanguageModel::complete()` e cria `Answer`. O pacote inclui `OpenAILanguageModel`; Gemini ou outro modelo pode ser adaptado ao mesmo contrato. O provider atual é buffered, não streaming incremental.
+**Como o ContextEngine usa.** Depois de montar o prompt, `RagPipeline` chama `LanguageModel::complete()` e cria `Answer`. O pacote inclui `OpenAILanguageModel`, `OllamaLanguageModel` e `GeminiLanguageModel`; todos são buffered, não streaming incremental.
 
 ### Tenant
 
@@ -487,7 +487,7 @@ php -m | grep -E 'PDO|pdo_pgsql|sockets'
 - OpenAI: alternativa incluída que exige internet e chave; seu padrão usa 1.536 dimensões e requer outro schema.
 - Gemini ou outro serviço: implementação própria de `EmbeddingProvider`, enquanto não houver adapter oficial.
 
-Para a resposta final, a implementação incluída é `OpenAILanguageModel`. Qualquer integração própria — incluindo Gemini — pode ser usada se implementar `LanguageModel`. Redis, Docker, `omegaalfa/collection` e `omegaalfa/lazy-object` são opcionais.
+Para a resposta final, estão incluídos `OpenAILanguageModel`, `OllamaLanguageModel` e `GeminiLanguageModel`. Qualquer outra integração pode ser usada se implementar `LanguageModel`. Redis, Docker, `omegaalfa/collection` e `omegaalfa/lazy-object` são opcionais.
 
 ## 🏗️ 5. O projeto de exemplo
 
@@ -604,7 +604,7 @@ EmbeddingProvider ──┼─ Ollama
                     └─ qualquer implementação compatível
 
                     ┌─ OpenAI
-LanguageModel ──────┼─ Gemini (adapter próprio)
+LanguageModel ──────┼─ GeminiLanguageModel
                     └─ qualquer implementação compatível
 ```
 
@@ -1076,7 +1076,7 @@ Se amanhã existirem `$geminiEmbeddings` e `$geminiLanguageModel` implementando 
 
 ### Depois: um bootstrap executável com os adapters disponíveis
 
-O arquivo a seguir usa OpenAI porque é o único `LanguageModel` concreto incluído atualmente, não porque a arquitetura dependa dela.
+O arquivo a seguir usa OpenAI como exemplo remoto. O pacote também inclui `OllamaLanguageModel` para respostas locais buffered; ambos implementam o mesmo contrato e podem ser trocados no bootstrap.
 
 Configure o ambiente:
 
@@ -1226,7 +1226,7 @@ Execute `php example.php`. Espere linhas no banco, resposta e fontes. Sem decora
 - providers atuais sem streaming incremental real;
 - extensão, tabela e índices não são criados em runtime;
 - providers externos, como OpenAI ou Gemini, dependem de rede/credencial; Ollama depende de serviço/modelo;
-- Ollama é incluído apenas para embeddings; Gemini ainda exige adapter próprio;
+- Ollama possui adapters de embedding e linguagem; Gemini possui adapter de linguagem, mas embeddings Gemini ainda exigem implementação própria;
 - coluna `vector(n)` possui dimensão física fixa;
 - nenhum adaptador Redis PSR-16 incluído.
 

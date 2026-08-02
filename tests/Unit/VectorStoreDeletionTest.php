@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Tests\Unit;
 
+use InvalidArgumentException;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
 use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
@@ -17,7 +18,7 @@ final class VectorStoreDeletionTest extends TestCase
     #[DataProvider('invalidScopeProvider')]
     public function testDeletionScopesRejectEmptyValues(callable $factory): void
     {
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $factory();
     }
 
@@ -35,9 +36,12 @@ final class VectorStoreDeletionTest extends TestCase
 
     public function testDocumentSpaceIsExplicitlyOptional(): void
     {
+        $tenantWide = new DocumentDeleteQuery('tenant');
         $allSpaces = new DocumentDeleteQuery('tenant', 'docs', 'document');
         $oneSpace = new DocumentDeleteQuery('tenant', 'docs', 'document', new EmbeddingSpace('provider', 'model', 1));
 
+        self::assertNull($tenantWide->collection);
+        self::assertNull($tenantWide->documentId);
         self::assertNull($allSpaces->space);
         self::assertNotNull($oneSpace->space);
     }

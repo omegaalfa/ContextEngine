@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Ingestion;
 
+use InvalidArgumentException;
+
 final readonly class IngestionReport
 {
     /** @param list<int> $affectedBatchSequences */
@@ -19,18 +21,23 @@ final readonly class IngestionReport
         public ?IngestionFailure $failure,
         public array $affectedBatchSequences,
         public bool $complete,
+        public int $documentsActivated = 0,
+        public int $documentVersionsFailed = 0,
     ) {
-        if (min($batchesPlanned, $batchesStarted, $batchesCompleted, $batchesPersisted, $batchesDiscarded, $chunksProduced, $chunksSent, $chunksPersisted) < 0) {
-            throw new \InvalidArgumentException('Report counters cannot be negative.');
+        if (min($batchesPlanned, $batchesStarted, $batchesCompleted, $batchesPersisted, $batchesDiscarded, $chunksProduced, $chunksSent, $chunksPersisted, $documentsActivated, $documentVersionsFailed) < 0) {
+            throw new InvalidArgumentException('Report counters cannot be negative.');
         }
         if ($batchesStarted > $batchesPlanned || $batchesCompleted > $batchesStarted || $batchesPersisted > $batchesCompleted || $batchesDiscarded > $batchesCompleted) {
-            throw new \InvalidArgumentException('Report batch counters are inconsistent.');
+            throw new InvalidArgumentException('Report batch counters are inconsistent.');
         }
         if ($chunksSent > $chunksProduced || $chunksPersisted > $chunksSent) {
-            throw new \InvalidArgumentException('Report chunk counters are inconsistent.');
+            throw new InvalidArgumentException('Report chunk counters are inconsistent.');
         }
         if ($complete === ($failure !== null)) {
-            throw new \InvalidArgumentException('Complete reports cannot contain failures and partial reports must contain one.');
+            throw new InvalidArgumentException('Complete reports cannot contain failures and partial reports must contain one.');
+        }
+        if ($complete && $documentVersionsFailed !== 0 || !$complete && $documentVersionsFailed < 1) {
+            throw new InvalidArgumentException('Document version counters must reflect the ingestion outcome.');
         }
     }
 

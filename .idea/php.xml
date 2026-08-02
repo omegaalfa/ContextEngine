@@ -103,6 +103,7 @@
       <path value="$PROJECT_DIR$/vendor/omegaalfa/http-client" />
       <path value="$PROJECT_DIR$/vendor/omegaalfa/fiber-event-loop" />
       <path value="$PROJECT_DIR$/vendor/omegaalfa/query-builder" />
+      <path value="$PROJECT_DIR$/vendor/omegaalfa/utils" />
     </include_path>
   </component>
   <component name="PhpProjectSharedConfiguration" php_language_level="8.4">

@@ -33,3 +33,7 @@ foreach ($answer->sources as $source) {
 ```
 
 `ask(Question|string $question, ?string $tenantId = null): Answer`; tenant é obrigatório quando a pergunta é string. Metadata permanece disponível em `$source->chunk->metadata`.
+
+## Composição pronta
+
+Para a composição padrão com embeddings Ollama e pgvector, use o [Bootstrap tipado](bootstrap.md). A composição é direta, sem container ou Service Locator, e a aplicação recebe `ContextEngineContext` com `retriever`, `ingestion`, `rag`, `embeddings` e `store`. O LLM é fornecido por uma factory e pode ser OpenAI, Gemini ou qualquer implementação de `LanguageModel`.

@@ -37,7 +37,7 @@ interface VectorStore
     public function deleteChunk(ChunkDeleteQuery $query): int;
 
     /**
-     * Removes a document from one vector space, or from all spaces when none is specified.
+     * Removes vectors from a tenant using optional collection, document, and vector-space filters.
      *
      * @param DocumentDeleteQuery $query
      * @return int

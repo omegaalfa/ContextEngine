@@ -5,9 +5,10 @@
   "license": "MIT",
   "require": {
     "php": "^8.4",
-    "omegaalfa/query-builder": "dev-main",
-    "omegaalfa/http-client": "dev-main",
-    "omegaalfa/fiber-event-loop": "dev-main",
+    "omegaalfa/fiber-event-loop": "^1.0",
+    "omegaalfa/http-client": "^1.0.1",
+    "omegaalfa/query-builder": "^2.0",
+    "omegaalfa/utils": "^1.0",
     "psr/simple-cache": "^3.0"
   },
   "require-dev": {
@@ -19,15 +20,16 @@
     "omegaalfa/collection": "Pode ser usado pela aplicação para composição de coleções e sequências lazy.",
     "omegaalfa/lazy-object": "Pode ser usado pela aplicação para inicialização tardia de providers e serviços."
   },
-  "autoload": {"psr-4": {"Omegaalfa\\ContextEngine\\": "src/"}},
-  "autoload-dev": {"psr-4": {"Omegaalfa\\ContextEngine\\Tests\\": "tests/"}},
-  "repositories": [
-    {"type": "path", "url": "../query-builder", "options": {"symlink": true}},
-    {"type": "path", "url": "../HttpClient", "options": {"symlink": true}},
-    {"type": "path", "url": "../FiberEventLoop", "options": {"symlink": true}}
-  ],
-  "minimum-stability": "dev",
-  "prefer-stable": true,
+  "autoload": {
+    "psr-4": {
+      "Omegaalfa\\ContextEngine\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Omegaalfa\\ContextEngine\\Tests\\": "tests/"
+    }
+  },
   "scripts": {
     "test": "phpunit",
     "test:unit": "phpunit --testsuite unit",
@@ -37,7 +39,14 @@
     "analyse": "phpstan analyse",
     "style": "php-cs-fixer fix --dry-run --diff",
     "style:fix": "php-cs-fixer fix",
-    "check": ["@style", "@test", "@analyse"]
+    "check": [
+      "@style",
+      "@test",
+      "@analyse",
+      "composer audit --locked"
+    ]
   },
-  "config": {"sort-packages": true}
+  "config": {
+    "sort-packages": true
+  }
 }

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "306b2f698cbb85a94b49d89c0cf51040",
+    "content-hash": "a27e607b668616319e6ab2c921528521",
     "packages": [
         {
             "name": "brick/math",
@@ -859,11 +859,17 @@
         },
         {
             "name": "omegaalfa/fiber-event-loop",
-            "version": "dev-main",
-            "dist": {
-                "type": "path",
-                "url": "../FiberEventLoop",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/omegaalfa/FiberEventLoop.git",
                 "reference": "6b3a1a2f7dd0e54590305d63ca64225477d77fe9"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/omegaalfa/FiberEventLoop/zipball/6b3a1a2f7dd0e54590305d63ca64225477d77fe9",
+                "reference": "6b3a1a2f7dd0e54590305d63ca64225477d77fe9",
+                "shasum": ""
             },
             "require": {
                 "ext-sockets": "*",
@@ -879,28 +885,7 @@
                     "Omegaalfa\\FiberEventLoop\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Tests\\Omegaalfa\\FiberEventLoop\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "phpunit"
-                ],
-                "test-coverage": [
-                    "phpunit --coverage-html=coverage --coverage-text"
-                ],
-                "test-verbose": [
-                    "phpunit --verbose"
-                ],
-                "test-filter": [
-                    "phpunit --filter"
-                ],
-                "test-stop-on-failure": [
-                    "phpunit --stop-on-failure"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -922,22 +907,29 @@
                 "non-blocking",
                 "tcp"
             ],
-            "transport-options": {
-                "symlink": true,
-                "relative": true
-            }
+            "support": {
+                "issues": "https://github.com/omegaalfa/FiberEventLoop/issues",
+                "source": "https://github.com/omegaalfa/FiberEventLoop/tree/v1.0.0"
+            },
+            "time": "2026-07-05T23:48:08+00:00"
         },
         {
             "name": "omegaalfa/http-client",
-            "version": "dev-main",
+            "version": "v1.0.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/omegaalfa/HttpClient.git",
+                "reference": "02fac7822685b20e8c0a9918cb36a3c68f66eb95"
+            },
             "dist": {
-                "type": "path",
-                "url": "../HttpClient",
-                "reference": "efba27beccf694f4bc10174fda20f8cdb86cb028"
+                "type": "zip",
+                "url": "https://api.github.com/repos/omegaalfa/HttpClient/zipball/02fac7822685b20e8c0a9918cb36a3c68f66eb95",
+                "reference": "02fac7822685b20e8c0a9918cb36a3c68f66eb95",
+                "shasum": ""
             },
             "require": {
                 "ext-sockets": "*",
-                "omegaalfa/fiber-event-loop": "dev-main",
+                "omegaalfa/fiber-event-loop": "v1.0.0",
                 "php": ">=8.4"
             },
             "require-dev": {
@@ -954,28 +946,7 @@
                     "Omegaalfa\\HttpClient\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Tests\\Omegaalfa\\HttpClient\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "phpunit -c phpunit.xml.dist"
-                ],
-                "test-coverage": [
-                    "phpunit -c phpunit.xml.dist --coverage-html=coverage --coverage-text"
-                ],
-                "test-verbose": [
-                    "phpunit -c phpunit.xml.dist --display-all-issues"
-                ],
-                "test-filter": [
-                    "phpunit -c phpunit.xml.dist --filter"
-                ],
-                "test-stop-on-failure": [
-                    "phpunit -c phpunit.xml.dist --stop-on-failure"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -997,18 +968,25 @@
                 "non-blocking",
                 "tcp"
             ],
-            "transport-options": {
-                "symlink": true,
-                "relative": true
-            }
+            "support": {
+                "issues": "https://github.com/omegaalfa/HttpClient/issues",
+                "source": "https://github.com/omegaalfa/HttpClient/tree/v1.0.1"
+            },
+            "time": "2026-08-01T13:26:13+00:00"
         },
         {
             "name": "omegaalfa/query-builder",
-            "version": "dev-main",
-            "dist": {
-                "type": "path",
-                "url": "../query-builder",
+            "version": "v2.0.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/omegaalfa/query-builder.git",
                 "reference": "f389d6aa043704a664acc67b36d8b18d432226a6"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/omegaalfa/query-builder/zipball/f389d6aa043704a664acc67b36d8b18d432226a6",
+                "reference": "f389d6aa043704a664acc67b36d8b18d432226a6",
+                "shasum": ""
             },
             "require": {
                 "ext-ctype": "*",
@@ -1027,31 +1005,7 @@
                     "Omegaalfa\\QueryBuilder\\": "src/"
                 }
             },
-            "autoload-dev": {
-                "psr-4": {
-                    "Tests\\": "tests/"
-                }
-            },
-            "scripts": {
-                "test": [
-                    "phpunit"
-                ],
-                "benchmark:compare": [
-                    "php -d xdebug.mode=off benchmarks/compare-doctrine.php"
-                ],
-                "benchmark:pgvector": [
-                    "php -d xdebug.mode=off benchmarks/pgvector.php"
-                ],
-                "benchmark:pgvector-overhead": [
-                    "php -d xdebug.mode=off benchmarks/pgvector-overhead.php"
-                ],
-                "benchmark:database": [
-                    "php -d xdebug.mode=off benchmarks/database-workloads.php"
-                ],
-                "benchmark:pgvector-search": [
-                    "php -d xdebug.mode=off benchmarks/pgvector-search.php"
-                ]
-            },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "MIT"
             ],
@@ -1075,10 +1029,65 @@
                 "query builder",
                 "sql"
             ],
-            "transport-options": {
-                "symlink": true,
-                "relative": true
-            }
+            "support": {
+                "issues": "https://github.com/omegaalfa/query-builder/issues",
+                "source": "https://github.com/omegaalfa/query-builder/tree/v2.0.1"
+            },
+            "time": "2026-07-29T01:26:49+00:00"
+        },
+        {
+            "name": "omegaalfa/utils",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/omegaalfa/Utils.git",
+                "reference": "6a8591a9deb638defe948bf4e8acde9ace0463e2"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/omegaalfa/Utils/zipball/6a8591a9deb638defe948bf4e8acde9ace0463e2",
+                "reference": "6a8591a9deb638defe948bf4e8acde9ace0463e2",
+                "shasum": ""
+            },
+            "require": {
+                "ext-intl": "*",
+                "ext-mbstring": "*",
+                "php": ">=8.4"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^11.0 || ^12.0",
+                "roave/security-advisories": "dev-latest"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Omegaalfa\\Utils\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "wrt",
+                    "email": "webdesenvolver.agenda@gmail.com"
+                }
+            ],
+            "description": "A lightweight, zero-dependency PHP utility package designed to provide essential helper functions for small scripts, microservices, and CLI applications.",
+            "keywords": [
+                ".env",
+                "configuration",
+                "env-loader",
+                "environment",
+                "utilities"
+            ],
+            "support": {
+                "issues": "https://github.com/omegaalfa/Utils/issues",
+                "source": "https://github.com/omegaalfa/Utils/tree/v1.0.0"
+            },
+            "time": "2026-08-02T01:24:10+00:00"
         },
         {
             "name": "psr/clock",
@@ -6092,13 +6101,9 @@
         }
     ],
     "aliases": [],
-    "minimum-stability": "dev",
-    "stability-flags": {
-        "omegaalfa/fiber-event-loop": 20,
-        "omegaalfa/http-client": 20,
-        "omegaalfa/query-builder": 20
-    },
-    "prefer-stable": true,
+    "minimum-stability": "stable",
+    "stability-flags": {},
+    "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
         "php": "^8.4"

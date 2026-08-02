@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Cache;
 
+use DateInterval;
+use LogicException;
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Embedding\Embedding;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingBatchRequest;
@@ -12,7 +14,7 @@ use Psr\SimpleCache\CacheInterface;
 
 final readonly class CachedEmbeddingProvider implements EmbeddingProvider
 {
-    public function __construct(private EmbeddingProvider $provider, private CacheInterface $cache, private null|int|\DateInterval $ttl = null, private string $namespace = 'context_embedding') {}
+    public function __construct(private EmbeddingProvider $provider, private CacheInterface $cache, private null|int|DateInterval $ttl = null, private string $namespace = 'context_embedding') {}
     public function space(): EmbeddingSpace
     {
         return $this->provider->space();
@@ -25,7 +27,7 @@ final readonly class CachedEmbeddingProvider implements EmbeddingProvider
     public function embedBatch(EmbeddingBatchRequest $request): array
     {
         if ($request->expectedSpace->fingerprint() !== $this->space()->fingerprint()) {
-            throw new \LogicException('Requested embedding space does not match provider.');
+            throw new LogicException('Requested embedding space does not match provider.');
         } $input = $request->texts;
         $resolved = [];
         $missing = [];
@@ -43,7 +45,7 @@ final readonly class CachedEmbeddingProvider implements EmbeddingProvider
             $uniqueTexts = array_keys($missing);
             $fresh = $this->provider->embedBatch(new EmbeddingBatchRequest($request->tenantId, $uniqueTexts, $this->space(), $request->metadata));
             if (count($fresh) !== count($uniqueTexts)) {
-                throw new \LogicException('Embedding provider returned a different batch size.');
+                throw new LogicException('Embedding provider returned a different batch size.');
             }
             foreach ($uniqueTexts as $offset => $text) {
                 $embedding = $fresh[$offset];
@@ -84,7 +86,7 @@ final readonly class CachedEmbeddingProvider implements EmbeddingProvider
     private function assertSpace(Embedding $embedding): void
     {
         if ($embedding->space->fingerprint() !== $this->space()->fingerprint()) {
-            throw new \LogicException('Embedding provider returned an incompatible vector space.');
+            throw new LogicException('Embedding provider returned an incompatible vector space.');
         }
     }
     private function key(string $tenantId, string $text): string

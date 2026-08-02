@@ -10,11 +10,16 @@ use Omegaalfa\ContextEngine\Embedding\EmbeddingBatchRequest;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
 use Omegaalfa\ContextEngine\Exception\ProviderException;
 use Omegaalfa\ContextEngine\Provider\Http\JsonClient;
+use Omegaalfa\ContextEngine\Provider\Support\EmbeddingResponseValidator;
+use Omegaalfa\ContextEngine\Provider\Support\ProviderConfiguration;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 
 final readonly class OpenAIEmbeddingProvider implements EmbeddingProvider
 {
     private JsonClient $http;
+    public string $model;
+    private int $dimensions;
+    private string $baseUrl;
 
     /**
      * @param string $apiKey
@@ -23,8 +28,12 @@ final readonly class OpenAIEmbeddingProvider implements EmbeddingProvider
      * @param AsyncHttpClient $client
      * @param string $baseUrl
      */
-    public function __construct(string $apiKey, public string $model = 'text-embedding-3-small', private int $dimensions = 1536, AsyncHttpClient $client = new AsyncHttpClient(), private string $baseUrl = 'https://api.openai.com/v1')
+    public function __construct(string $apiKey, string $model = 'text-embedding-3-small', int $dimensions = 1536, AsyncHttpClient $client = new AsyncHttpClient(), string $baseUrl = 'https://api.openai.com/v1')
     {
+        $apiKey = ProviderConfiguration::nonEmpty($apiKey, 'OpenAI API key');
+        $this->model = ProviderConfiguration::nonEmpty($model, 'OpenAI embedding model');
+        $this->dimensions = ProviderConfiguration::positiveDimensions($dimensions);
+        $this->baseUrl = ProviderConfiguration::baseUrl($baseUrl);
         $this->http = new JsonClient($client->withBearerToken($apiKey));
     }
 
@@ -57,22 +66,6 @@ final readonly class OpenAIEmbeddingProvider implements EmbeddingProvider
         }
         $input = $request->texts;
         $response = $this->http->post($this->baseUrl . '/embeddings', ['model' => $this->model, 'input' => $input, 'dimensions' => $this->dimensions]);
-        $data = $response['data'] ?? null;
-        if (!is_array($data) || count($data) !== count($input)) {
-            throw new ProviderException('OpenAI returned a different embedding batch size.');
-        }
-        $result = [];
-        foreach ($data as $item) {
-            $raw = is_array($item) ? ($item['embedding'] ?? null) : null;
-            if (!is_array($raw)) {
-                throw new ProviderException('OpenAI embedding response is missing data.');
-            }
-            $values = [];
-            foreach ($raw as $value) {
-                $values[] = $value;
-            }
-            $result[] = new Embedding($values, $this->space());
-        }
-        return $result;
+        return EmbeddingResponseValidator::orderedOpenAI($response['data'] ?? null, count($input), $this->space());
     }
 }

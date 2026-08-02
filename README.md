@@ -4,7 +4,8 @@
 
 ### RAG tipado e multi-tenant para aplicações PHP 8.4
 
-[![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)](https://www.php.net/)
+[![PHP 8.4+](https://img.shields.io/badge/PHP-8.4%20%7C%208.5-777BB4?logo=php&logoColor=white)](https://www.php.net/)
+[![CI](https://github.com/omegaalfa/ContextEngine/actions/workflows/ci.yml/badge.svg)](https://github.com/omegaalfa/ContextEngine/actions/workflows/ci.yml)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![License MIT](https://img.shields.io/badge/license-MIT-22C55E)](LICENSE)
 
@@ -17,7 +18,7 @@ ContextEngine é uma biblioteca PHP para construir pipelines de RAG (*Retrieval-
 É o motor da solução, não uma aplicação completa: não inclui interface web, autenticação, controller HTTP ou CLI de produto.
 
 > [!IMPORTANT]
-> O núcleo é funcional e possui testes automatizados, mas o projeto continua em desenvolvimento ativo, usa `dev-main` e ainda não possui versão estável confirmada. A API pública pode sofrer mudanças incompatíveis. Avalie e teste cuidadosamente antes de cargas críticas de produção.
+> O núcleo é funcional, usa versões estáveis das dependências Omegaalfa e possui testes automatizados. O ContextEngine ainda está em desenvolvimento ativo e não deve ser apresentado como solução completa de produção: faltam recursos operacionais como observabilidade integrada, retry de providers e substituição atômica de versões completas de documentos. Avalie-o em uma aplicação real antes de cargas críticas.
 
 ## ✨ Recursos principais
 
@@ -32,6 +33,7 @@ ContextEngine é uma biblioteca PHP para construir pipelines de RAG (*Retrieval-
 | ✅ Cache PSR-16 opcional por decorators | |
 | ✅ Concorrência controlada com Fibers | |
 | ✅ Upsert idempotente por espaço vetorial | |
+| ✅ Ativação atômica de versões de documento | |
 
 ## 🧭 Como funciona
 
@@ -84,30 +86,61 @@ Essa é uma decisão arquitetural, não uma comparação de desempenho com outro
 
 ## ⬇️ Instalação
 
-O pacote usa `dev-main` e a publicação no Packagist não foi confirmada. A instalação VCS atual precisa declarar ContextEngine e os três repositórios irmãos:
-
-```json
-{
-  "require": {
-    "php": "^8.4",
-    "omegaalfa/context-engine": "dev-main"
-  },
-  "repositories": [
-    {"type": "vcs", "url": "https://github.com/omegaalfa/ContextEngine"},
-    {"type": "vcs", "url": "https://github.com/omegaalfa/query-builder"},
-    {"type": "vcs", "url": "https://github.com/omegaalfa/HttpClient"},
-    {"type": "vcs", "url": "https://github.com/omegaalfa/FiberEventLoop"}
-  ],
-  "minimum-stability": "dev",
-  "prefer-stable": true
-}
-```
+As dependências do ecossistema usam releases estáveis e são resolvidas normalmente pelo Composer. Quando o ContextEngine estiver publicado no Packagist, a instalação será:
 
 ```bash
-composer install
+composer require omegaalfa/context-engine
 ```
 
+Para desenvolver o próprio repositório:
+
+```bash
+git clone https://github.com/omegaalfa/ContextEngine.git
+cd ContextEngine
+composer install
+composer check
+```
+
+O `composer.lock` é versionado para tornar CI e desenvolvimento deste repositório reproduzíveis. Aplicações consumidoras resolvem as constraints declaradas no `composer.json` da biblioteca; o lock da biblioteca não controla as versões instaladas nelas.
+
 Consulte [Primeiros passos](docs/getting-started.md) para banco, dimensão, Docker e configuração completa.
+
+Exemplos executáveis:
+
+```bash
+php examples/simple-ingestion.php
+php examples/simple-search.php "Em quanto tempo posso solicitar um reembolso?"
+```
+
+O segundo comando faz somente retrieval vetorial e mostra os chunks encontrados; nenhuma LLM é chamada.
+
+## ⚡ Composição pronta e tipada
+
+Para o cenário padrão com **Ollama + PostgreSQL/pgvector**, o `Bootstrap` constrói diretamente conexão, store vetorial, provider de embeddings, executor concorrente, retriever, ingestão e RAG. O retorno é um `ContextEngineContext` fortemente tipado: não existe container oculto, chamada a `get()` ou Service Locator na API.
+
+```php
+use Omegaalfa\ContextEngine\Bootstrap\Bootstrap;
+use Omegaalfa\ContextEngine\Bootstrap\ContextEngineConfigFactory;
+use Omegaalfa\ContextEngine\Provider\Ollama\OllamaLanguageModel;
+use Omegaalfa\ContextEngine\Rag\Question;
+use Omegaalfa\HttpClient\Http\AsyncHttpClient;
+
+$context = Bootstrap::create(
+    config: ContextEngineConfigFactory::fromEnvironment(),
+    languageModelFactory: static fn (AsyncHttpClient $http) => new OllamaLanguageModel(
+        model: 'qwen3:8b',
+        client: $http->readTimeout(300)->totalTimeout(300),
+    ),
+);
+
+$answer = $context->rag->ask(
+    new Question('Qual é o prazo para reembolso?', 'tenant-42'),
+);
+```
+
+A factory do modelo recebe o mesmo `AsyncHttpClient` usado pelo provider de embeddings. Por isso, embeddings e LLM compartilham exatamente um `FiberEventLoop`, sem expor loop, HTTP client ou infraestrutura na API pública. O contexto também oferece `$context->retriever`, `$context->ingestion`, `$context->embeddings` e `$context->store` com autocomplete e tipos explícitos.
+
+Veja o exemplo executável em [`examples/simple-rag.php`](examples/simple-rag.php) e a explicação completa em [Bootstrap tipado](docs/bootstrap.md).
 
 ## 📥 Ingestão mínima
 
@@ -171,13 +204,13 @@ foreach ($answer->sources as $source) {
 ## 🧩 Infraestrutura incluída
 
 - **Embeddings:** `OpenAIEmbeddingProvider` e `OllamaEmbeddingProvider`; o schema fornecido está preparado para `bge-m3`/1024 via Ollama.
-- **LLM:** `OpenAILanguageModel`, com resposta buffered.
+- **LLM:** `OpenAILanguageModel`, `OllamaLanguageModel` e `GeminiLanguageModel`, todos com resposta buffered.
 - **Store:** `PgVectorStore` via `omegaalfa/query-builder`.
 - **Cache:** `CachedEmbeddingProvider` e `CachedLanguageModel`, ambos PSR-16.
 - **Concorrência:** `FiberBatchEmbeddingExecutor`, sem `Future` na API pública. Providers baseados em `AsyncHttpClient` compartilham com o executor uma única instância de `FiberEventLoop` criada no bootstrap.
 - **Streaming:** contrato independente, sem provider incremental incluído atualmente.
 
-Gemini e outros fornecedores podem ser integrados implementando os contratos públicos; nenhum adapter Gemini está incluído hoje.
+O pacote inclui `GeminiLanguageModel` para respostas completas. Embeddings Gemini e outros recursos do fornecedor continuam extensíveis pelos contratos públicos.
 
 ## 🚧 Limitações resumidas
 

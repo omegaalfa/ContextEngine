@@ -10,6 +10,8 @@ use Omegaalfa\ContextEngine\Embedding\EmbeddingBatchRequest;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
 use Omegaalfa\ContextEngine\Exception\ProviderException;
 use Omegaalfa\ContextEngine\Provider\Http\JsonClient;
+use Omegaalfa\ContextEngine\Provider\Support\EmbeddingResponseValidator;
+use Omegaalfa\ContextEngine\Provider\Support\ProviderConfiguration;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 
 final readonly class OllamaEmbeddingProvider implements EmbeddingProvider
@@ -18,6 +20,9 @@ final readonly class OllamaEmbeddingProvider implements EmbeddingProvider
      * @var JsonClient
      */
     private JsonClient $http;
+    public string $model;
+    private int $dimensions;
+    private string $baseUrl;
 
     /**
      * @param string $model
@@ -26,11 +31,14 @@ final readonly class OllamaEmbeddingProvider implements EmbeddingProvider
      * @param string $baseUrl
      */
     public function __construct(
-        public string   $model,
-        private int     $dimensions,
+        string          $model,
+        int             $dimensions,
         AsyncHttpClient $client = new AsyncHttpClient(),
-        private string  $baseUrl = 'http://127.0.0.1:11434'
+        string          $baseUrl = 'http://127.0.0.1:11434'
     ) {
+        $this->model = ProviderConfiguration::nonEmpty($model, 'Ollama embedding model');
+        $this->dimensions = ProviderConfiguration::positiveDimensions($dimensions);
+        $this->baseUrl = ProviderConfiguration::baseUrl($baseUrl);
         $this->http = new JsonClient($client);
     }
 
@@ -63,21 +71,6 @@ final readonly class OllamaEmbeddingProvider implements EmbeddingProvider
         }
         $input = $request->texts;
         $response = $this->http->post($this->baseUrl . '/api/embed', ['model' => $this->model, 'input' => $input]);
-        $items = $response['embeddings'] ?? null;
-        if (!is_array($items) || count($items) !== count($input)) {
-            throw new ProviderException('Ollama returned a different embedding batch size.');
-        }
-        $result = [];
-        foreach ($items as $raw) {
-            if (!is_array($raw)) {
-                throw new ProviderException('Ollama embedding response is invalid.');
-            }
-            $values = [];
-            foreach ($raw as $value) {
-                $values[] = $value;
-            }
-            $result[] = new Embedding($values, $this->space());
-        }
-        return $result;
+        return EmbeddingResponseValidator::positional($response['embeddings'] ?? null, count($input), $this->space(), 'Ollama');
     }
 }

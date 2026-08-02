@@ -4,16 +4,21 @@ Esta página descreve a superfície pública de `Omegaalfa\\ContextEngine`. Tipo
 
 > Classes em `Infrastructure`, `Provider` e `VectorStore` são adaptadores públicos, não domínio. `Future`, PDO, QueryBuilder e cliente HTTP permanecem confinados a essas camadas.
 
+## ⚡ Composição tipada
+
+`Bootstrap::create(ContextEngineConfig, Closure): ContextEngineContext` oferece a composição padrão Ollama + pgvector. A closure recebe o `AsyncHttpClient` compartilhado e deve produzir um `LanguageModel`. O Bootstrap não utiliza container ou Service Locator; o contexto expõe apenas `retriever`, `ingestion`, `rag`, `embeddings` e `store`. Veja [Bootstrap](bootstrap.md).
+
 ## ◇ Contratos
 
 ### `DocumentLoader` e `TextSplitter`
 
 ```text
 public function load(): iterable;
+public function fingerprint(): string; // TextSplitter
 public function split(Document $document): iterable;
 ```
 
-O loader produz `Document` incrementalmente; o splitter produz `Chunk` na ordem do documento. `TextFileLoader` e `RecursiveTextSplitter` são as implementações incluídas.
+O loader produz `Document` incrementalmente; o splitter produz `Chunk` na ordem do documento. O fingerprint identifica algoritmo e configurações que alteram os chunks e participa de `DocumentVersion`. `TextFileLoader` e `RecursiveTextSplitter` são as implementações incluídas.
 
 ### `EmbeddingProvider`
 
@@ -43,7 +48,20 @@ public function deleteDocument(DocumentDeleteQuery $query): int;
 public function clearCollection(CollectionDeleteQuery $query): int;
 ```
 
-Persiste `list<EmbeddedChunk>`, retorna `list<VectorSearchResult>` e oferece manutenção explícita por chunk, documento e collection. Exclusões sempre exigem tenant e collection; `deleteChunk()` também exige o espaço vetorial. `deleteDocument()` remove somente um espaço quando informado ou todas as versões do documento quando `space` é `null`. Os métodos de exclusão retornam a quantidade de linhas removidas.
+Persiste `list<EmbeddedChunk>`, retorna `list<VectorSearchResult>` e oferece manutenção por chunk, filtros de documento e collection. Toda exclusão exige tenant. `deleteChunk()` exige também collection e espaço vetorial. Em `DocumentDeleteQuery`, collection, documento e espaço são filtros opcionais; omitir todos remove os vetores do tenant informado. Os métodos retornam a quantidade de linhas removidas.
+
+### `VersionedVectorStore`
+
+Especializa `VectorStore` para o `IngestionPipeline`:
+
+```text
+public function beginVersion(DocumentVersion $version): void;
+public function stageBatch(DocumentVersion $version, array $chunks): void;
+public function activateVersion(DocumentVersion $version): void;
+public function failVersion(DocumentVersion $version): void;
+```
+
+`DocumentVersion` é imutável e determinística. `activateVersion()` deve trocar versões atomicamente; `stageBatch()` nunca pode tornar uma versão incompleta pesquisável.
 
 ### Modelos de linguagem
 
@@ -121,7 +139,7 @@ O construtor exige splitter, provider, store e executor; tamanho do lote e `Batc
 
 ### Relatórios e execução
 
-- `IngestionReport`: contadores incrementais, sequências afetadas, falha pública sanitizada e estado completo/parcial.
+- `IngestionReport`: contadores incrementais, documentos ativados, versões falhas, sequências afetadas, falha pública sanitizada e estado completo/parcial.
 - `IngestionFailure`: código estável, mensagem segura, documento e sequência opcionais; a causa técnica permanece em `IngestionException::getPrevious()`.
 - `BatchExecutionProgress`: snapshot dos lotes agendados, iniciados, concluídos e descartados sem consumir antecipadamente toda a entrada.
 - `BatchEmbeddingResult`: valida sequência, tipos e cardinalidade entre chunks e embeddings e carrega o snapshot de progresso.
@@ -172,7 +190,7 @@ foreach ($rag->stream(new Question('Resuma.', 'acme')) as $delta) {
 ## ▣ PgVector
 
 - `PgVectorSchema`: configura e valida identificadores de tabela e colunas.
-- `PgVectorStore(QueryBuilder $query, PgVectorSchema $schema = new PgVectorSchema())`: persiste, busca e remove por escopos explícitos. O upsert usa tenant + collection + chunk + fingerprint e não solicita `RETURNING` nem sequence.
+- `PgVectorStore(QueryBuilder $query, PgVectorSchema $schema = new PgVectorSchema())`: implementa `VersionedVectorStore`. O upsert usa tenant + collection + chunk + fingerprint + document version e não solicita `RETURNING` nem sequence.
 
 O schema é provisionado externamente. Veja [schema](database-schema.md) e [Docker](docker-integration.md).
 
@@ -181,6 +199,8 @@ O schema é provisionado externamente. Veja [schema](database-schema.md) e [Dock
 - `OpenAIEmbeddingProvider`: exige API key, modelo e dimensão; implementa somente `EmbeddingProvider`.
 - `OllamaEmbeddingProvider`: exige modelo, dimensão e endpoint válido; implementa somente `EmbeddingProvider`.
 - `OpenAILanguageModel`: implementa `CacheableLanguageModel`, não streaming.
+- `OllamaLanguageModel`: usa `/api/chat` com `stream: false`; implementa `CacheableLanguageModel`, não streaming.
+- `GeminiLanguageModel`: usa `generateContent`, traduz system/user/assistant para o formato Gemini e implementa `CacheableLanguageModel`, não streaming.
 - `JsonClient`: POST JSON materializado; respostas inválidas viram `ProviderException`.
 
 Os providers atuais são buffered. Nenhum divide uma resposta completa em deltas.

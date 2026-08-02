@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Ingestion;
 
+use InvalidArgumentException;
+
 final readonly class BatchExecutionProgress
 {
     public function __construct(
@@ -14,10 +16,10 @@ final readonly class BatchExecutionProgress
         public int $chunksScheduled,
     ) {
         if (min($scheduled, $started, $completed, $discarded, $chunksScheduled) < 0) {
-            throw new \InvalidArgumentException('Batch execution counters cannot be negative.');
+            throw new InvalidArgumentException('Batch execution counters cannot be negative.');
         }
         if ($started > $scheduled || $completed > $started || $discarded > $completed) {
-            throw new \InvalidArgumentException('Batch execution counters are inconsistent.');
+            throw new InvalidArgumentException('Batch execution counters are inconsistent.');
         }
     }
 

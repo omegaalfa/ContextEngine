@@ -8,6 +8,7 @@ use Omegaalfa\ContextEngine\Contract\CacheableLanguageModel;
 use Omegaalfa\ContextEngine\Exception\ProviderException;
 use Omegaalfa\ContextEngine\Prompt\ChatMessage;
 use Omegaalfa\ContextEngine\Provider\Http\JsonClient;
+use Omegaalfa\ContextEngine\Provider\Support\ProviderConfiguration;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 
 final readonly class OpenAILanguageModel implements CacheableLanguageModel
@@ -16,6 +17,8 @@ final readonly class OpenAILanguageModel implements CacheableLanguageModel
      * @var JsonClient
      */
     private JsonClient $http;
+    public string $model;
+    private string $baseUrl;
 
     /**
      * @param string $apiKey
@@ -23,8 +26,11 @@ final readonly class OpenAILanguageModel implements CacheableLanguageModel
      * @param AsyncHttpClient $client
      * @param string $baseUrl
      */
-    public function __construct(string $apiKey, public string $model = 'gpt-4.1-mini', AsyncHttpClient $client = new AsyncHttpClient(), private string $baseUrl = 'https://api.openai.com/v1')
+    public function __construct(string $apiKey, string $model = 'gpt-4.1-mini', AsyncHttpClient $client = new AsyncHttpClient(), string $baseUrl = 'https://api.openai.com/v1')
     {
+        $apiKey = ProviderConfiguration::nonEmpty($apiKey, 'OpenAI API key');
+        $this->model = ProviderConfiguration::nonEmpty($model, 'OpenAI language model');
+        $this->baseUrl = ProviderConfiguration::baseUrl($baseUrl);
         $this->http = new JsonClient($client->withBearerToken($apiKey));
     }
 
@@ -32,7 +38,7 @@ final readonly class OpenAILanguageModel implements CacheableLanguageModel
      * @param array $messages
      * @return string
      */
-    /** @param list<\Omegaalfa\ContextEngine\Prompt\ChatMessage> $messages */
+    /** @param list<ChatMessage> $messages */
     public function complete(array $messages): string
     {
         $response = $this->http->post($this->baseUrl . '/chat/completions', ['model' => $this->model, 'messages' => $this->messages($messages)]);

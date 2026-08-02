@@ -3,6 +3,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS context_chunks (
     chunk_id text NOT NULL,
     document_id text NOT NULL,
+    document_version text NOT NULL,
+    ingestion_state text NOT NULL DEFAULT 'staged' CHECK (ingestion_state IN ('staged', 'active', 'failed', 'superseded')),
     tenant_id text NOT NULL,
     collection text NOT NULL,
     status text NOT NULL DEFAULT 'active',
@@ -19,7 +21,8 @@ CREATE TABLE IF NOT EXISTS context_chunks (
         tenant_id,
         collection,
         chunk_id,
-        embedding_space_fingerprint
+        embedding_space_fingerprint,
+        document_version
     ),
     CONSTRAINT context_chunks_content_not_empty CHECK (btrim(content) <> ''),
     CONSTRAINT context_chunks_provider_not_empty CHECK (btrim(embedding_provider) <> ''),
@@ -27,10 +30,10 @@ CREATE TABLE IF NOT EXISTS context_chunks (
 );
 
 CREATE INDEX IF NOT EXISTS context_chunks_scope_idx ON context_chunks
-    (tenant_id, collection, status, embedding_space_fingerprint);
+    (tenant_id, collection, status, ingestion_state, embedding_space_fingerprint);
 
 CREATE INDEX IF NOT EXISTS context_chunks_document_position_idx ON context_chunks
-    (tenant_id, collection, document_id, position);
+    (tenant_id, collection, document_id, document_version, position);
 
 CREATE INDEX IF NOT EXISTS context_chunks_embedding_hnsw_idx ON context_chunks
     USING hnsw (embedding vector_cosine_ops);

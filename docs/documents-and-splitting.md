@@ -59,12 +59,14 @@ final readonly class ArticleLoader implements DocumentLoader
 
 ## RecursiveTextSplitter
 
-Assinatura: `__construct(int $chunkSize = 1000, int $overlap = 150, TextNormalizer $normalizer = new TextNormalizer())` e `split(Document $document): iterable<Chunk>`.
+Assinatura: `__construct(int $chunkSize = 1000, int $overlap = 150, TextNormalizer $normalizer = new TextNormalizer())`, `fingerprint(): string` e `split(Document $document): iterable<Chunk>`.
 
 Ele normaliza CRLF, tabs e espaços e percorre o texto por offsets. Dentro de cada janela procura, nessa ordem, limites de parágrafo, linha, sentença e espaço; quando nenhum corte seguro existe, usa o limite de caracteres. Os separadores apenas escolhem onde terminar a janela: nunca fazem o cursor saltar texto ainda não coberto.
 
 `overlap` deve ser `>= 0` e menor que `chunkSize`. O chunk seguinte começa exatamente `overlap` caracteres antes do fim do anterior. Isso permite reconstruir o texto normalizado removendo o prefixo repetido de cada chunk subsequente, sem lacunas ou reordenação. Tenant, collection, status e metadata são propagados.
 
 O ID é SHA-256 de tenant, documento, posição e conteúdo final. Ele é determinístico para este splitter, mas a API permite splitters externos; o banco não pressupõe ID global.
+
+O fingerprint do splitter inclui a versão do algoritmo, `chunkSize` e `overlap`. Ele participa da identidade de `DocumentVersion`: mudar a estratégia cria outra versão completa, impedindo que chunks produzidos por configurações incompatíveis sejam misturados. Splitters próprios devem aplicar a mesma regra a toda opção que altere sua saída.
 
 Documento/conteúdo vazio é rejeitado antes do splitter. Para textos grandes, `split()` produz chunks como generator, embora a partição de cada fragmento use strings em memória.

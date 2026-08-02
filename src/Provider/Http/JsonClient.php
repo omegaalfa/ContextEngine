@@ -8,6 +8,7 @@ use JsonException;
 use Omegaalfa\ContextEngine\Exception\ProviderException;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 use Omegaalfa\HttpClient\Http\Response;
+use Throwable;
 
 final readonly class JsonClient
 {
@@ -22,8 +23,12 @@ final readonly class JsonClient
      */
     public function post(string $url, array $payload): array
     {
-        $future = $this->client->withJson()->post($url, $payload);
-        $response = $future->await();
+        try {
+            $future = $this->client->withJson()->post($url, $payload);
+            $response = $future->await();
+        } catch (Throwable $exception) {
+            throw new ProviderException('Provider HTTP request failed.', previous: $exception);
+        }
         if (!$response instanceof Response) {
             throw new ProviderException('HTTP client returned an unexpected response type.');
         }
@@ -34,7 +39,7 @@ final readonly class JsonClient
     private function decode(Response $response): array
     {
         if ($response->failed()) {
-            throw new ProviderException("Provider returned HTTP {$response->status()}: {$response->text()}");
+            throw new ProviderException("Provider returned HTTP {$response->status()}.");
         }
         try {
             $data = $response->json();

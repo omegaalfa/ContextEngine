@@ -16,15 +16,19 @@ use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 use Omegaalfa\QueryBuilder\Connection\PDOConnection;
 use Omegaalfa\QueryBuilder\DatabaseSettings;
 use Omegaalfa\QueryBuilder\QueryBuilder;
+use Omegaalfa\Utils\EnvLoader\EnvLoader;
+
+// O .env apenas completa valores ausentes; processo, Docker e CI têm precedência.
+EnvLoader::load(dirname(__DIR__) . '/.env');
 
 // 1. Conecta ao PostgreSQL/pgvector do ContextEngine.
 $databaseSettings = new DatabaseSettings(
     driver: 'pgsql',
-    host: '127.0.0.1',
-    database: 'context_engine',
-    port: 54339,
-    username: 'context_engine',
-    password: 'context_engine',
+    host: EnvLoader::get('CONTEXT_ENGINE_PGVECTOR_HOST') ?? '127.0.0.1',
+    database: EnvLoader::get('CONTEXT_ENGINE_PGVECTOR_DATABASE') ?? 'context_engine',
+    port: EnvLoader::getInt('CONTEXT_ENGINE_PGVECTOR_PORT') ?? 54339,
+    username: EnvLoader::get('CONTEXT_ENGINE_PGVECTOR_USERNAME') ?? 'context_engine',
+    password: EnvLoader::get('CONTEXT_ENGINE_PGVECTOR_PASSWORD') ?? 'context_engine',
 );
 
 $connection = new PDOConnection($databaseSettings);
@@ -38,10 +42,10 @@ $httpClient = new AsyncHttpClient($eventLoop);
 // 3. Configura o modelo que transforma textos em vetores.
 // O Ollama precisa estar ativo e ter o modelo bge-m3 instalado.
 $embeddingProvider = new OllamaEmbeddingProvider(
-    model: 'bge-m3',
-    dimensions: 1024,
+    model: EnvLoader::get('CONTEXT_ENGINE_OLLAMA_EMBEDDING_MODEL') ?? 'bge-m3',
+    dimensions: EnvLoader::getInt('CONTEXT_ENGINE_OLLAMA_EMBEDDING_DIMENSIONS') ?? 1024,
     client: $httpClient,
-    baseUrl: 'http://127.0.0.1:11434',
+    baseUrl: EnvLoader::get('CONTEXT_ENGINE_OLLAMA_URL') ?? 'http://127.0.0.1:11434',
 );
 
 $batchExecutor = new FiberBatchEmbeddingExecutor(
@@ -64,7 +68,7 @@ $pipeline = new IngestionPipeline(
 // 5. Escolhe o arquivo e o tenant que será dono dos documentos.
 $loader = new TextFileLoader(
     path: __DIR__ . '/documents/politica-reembolso.txt',
-    tenantId: 'empresa-exemplo',
+    tenantId: EnvLoader::get('CONTEXT_ENGINE_TENANT_ID') ?? 'empresa-exemplo',
 );
 
 // 6. Executa a ingestão e mostra o relatório.

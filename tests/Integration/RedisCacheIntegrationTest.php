@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Tests\Integration;
 
 use PHPUnit\Framework\TestCase;
+use Redis;
+use Throwable;
 
 final class RedisCacheIntegrationTest extends TestCase
 {
@@ -14,10 +16,10 @@ final class RedisCacheIntegrationTest extends TestCase
             self::markTestSkipped('Set CONTEXT_ENGINE_RUN_REDIS_TESTS=1 to enable Redis decorator integration tests.');
         }
         try {
-            $redis = new \Redis();
+            $redis = new Redis();
             $connected = $redis->connect((string)(getenv('CONTEXT_ENGINE_REDIS_HOST') ?: '127.0.0.1'), (int)(getenv('CONTEXT_ENGINE_REDIS_PORT') ?: 63809), 2.0);
             $authenticated = $redis->auth((string)(getenv('CONTEXT_ENGINE_REDIS_PASSWORD') ?: 'context_engine'));
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             self::fail('Redis integration is enabled but service/configuration is unavailable: '.$e->getMessage());
         }
         self::assertTrue($connected);

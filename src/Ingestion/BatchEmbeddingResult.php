@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Ingestion;
 
+use InvalidArgumentException;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Embedding\Embedding;
 
@@ -20,11 +21,11 @@ final readonly class BatchEmbeddingResult
         public BatchExecutionProgress $progress,
     ) {
         if ($sequence < 0 || count($chunks) !== count($embeddings)) {
-            throw new \InvalidArgumentException('Batch result must preserve sequence and cardinality.');
+            throw new InvalidArgumentException('Batch result must preserve sequence and cardinality.');
         }
         foreach ($embeddings as $embedding) {
             if ($embedding->space->fingerprint() !== $embeddings[0]->space->fingerprint()) {
-                throw new \InvalidArgumentException('Batch result cannot mix vector spaces.');
+                throw new InvalidArgumentException('Batch result cannot mix vector spaces.');
             }
         }
     }

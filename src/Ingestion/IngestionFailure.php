@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Ingestion;
 
+use InvalidArgumentException;
+
 final readonly class IngestionFailure
 {
     public function __construct(
@@ -13,10 +15,10 @@ final readonly class IngestionFailure
         public ?int $batchSequence = null,
     ) {
         if (trim($code) === '' || trim($message) === '') {
-            throw new \InvalidArgumentException('Ingestion failure code and message cannot be empty.');
+            throw new InvalidArgumentException('Ingestion failure code and message cannot be empty.');
         }
         if ($batchSequence !== null && $batchSequence < 0) {
-            throw new \InvalidArgumentException('Batch sequence cannot be negative.');
+            throw new InvalidArgumentException('Batch sequence cannot be negative.');
         }
     }
 }
