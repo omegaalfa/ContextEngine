@@ -10,7 +10,9 @@ use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
 use Omegaalfa\ContextEngine\Provider\Ollama\OllamaEmbeddingProvider;
+use Omegaalfa\ContextEngine\Rag\FixedNoEvidencePolicy;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
+use Omegaalfa\ContextEngine\Retrieval\ContextRelevancePolicy;
 use Omegaalfa\ContextEngine\Retrieval\HeuristicQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\IdentityQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
@@ -75,6 +77,14 @@ final class Bootstrap
             fusedLimit: $config->fusedLimit,
             contextChunkLimit: $config->contextChunkLimit,
             maximumContextCharacters: $config->maximumContextCharacters,
+            contextRelevancePolicy: $config->adaptiveContextSelection
+                ? new ContextRelevancePolicy(
+                    maximumDistanceGap: $config->contextMaximumDistanceGap,
+                    minimumSources: $config->contextMinimumSources,
+                    maximumSources: $config->contextMaximumSources,
+                    preferSameDocument: $config->contextPreferSameDocument,
+                )
+                : null,
         );
         $ingestion = new IngestionPipeline(
             splitter: new RecursiveTextSplitter(
@@ -92,6 +102,7 @@ final class Bootstrap
             retriever: $retriever,
             prompts: new ContextPromptBuilder(),
             model: $languageModel,
+            noEvidencePolicy: new FixedNoEvidencePolicy($config->noEvidenceMessage),
         );
 
         return new ContextEngineContext(

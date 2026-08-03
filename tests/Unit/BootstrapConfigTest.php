@@ -28,11 +28,21 @@ final class BootstrapConfigTest extends TestCase
             retrievalLimit: 8,
             retrievalMetric: VectorMetric::L2,
             maximumDistance: 0.7,
+            adaptiveContextSelection: true,
+            contextMaximumDistanceGap: 0.09,
+            contextMinimumSources: 2,
+            contextMaximumSources: 4,
+            contextPreferSameDocument: false,
         );
 
         self::assertSame('financeiro', $config->collection);
         self::assertSame(VectorMetric::L2, $config->retrievalMetric);
         self::assertSame(0.7, $config->maximumDistance);
+        self::assertTrue($config->adaptiveContextSelection);
+        self::assertSame(0.09, $config->contextMaximumDistanceGap);
+        self::assertSame(2, $config->contextMinimumSources);
+        self::assertSame(4, $config->contextMaximumSources);
+        self::assertFalse($config->contextPreferSameDocument);
     }
 
     #[DataProvider('invalidConfigurationProvider')]
@@ -56,6 +66,12 @@ final class BootstrapConfigTest extends TestCase
         yield 'overlap reaches chunk' => [['chunkSize' => 100, 'overlap' => 100]];
         yield 'retrieval over limit' => [['retrievalLimit' => 101]];
         yield 'negative distance' => [['maximumDistance' => -0.1]];
+        yield 'negative context gap' => [['contextMaximumDistanceGap' => -0.1]];
+        yield 'zero context minimum' => [['contextMinimumSources' => 0]];
+        yield 'context maximum below minimum' => [[
+            'contextMinimumSources' => 3,
+            'contextMaximumSources' => 2,
+        ]];
     }
 
     public function testDatabaseAndOllamaConfigurationRejectInvalidValues(): void

@@ -1,5 +1,7 @@
 # 🔎 Pipeline de retrieval
 
+> Novo em RAG? Comece por [Retrieval para iniciantes](retrieval-for-beginners.md).
+
 ## Visão rápida
 
     Question original
@@ -33,6 +35,12 @@ HeuristicQueryRewriter é opt-in, determinístico e não chama LLM. A pergunta o
     → fusedLimit → vizinhos → orçamento → prompt
 
 O orçamento descarta chunks inteiros; nunca corta uma fonte silenciosamente.
+
+## Sele��o adaptativa opcional
+
+Quando `ContextRelevancePolicy` est� habilitada, a sele��o adaptativa atua depois dos vizinhos e antes do or�amento. Ela usa o melhor resultado como refer�ncia, preserva cobertura adicional e registra um motivo por candidato.
+
+Sem a pol�tica, o fluxo anterior permanece intacto. A configura��o e as limita��es est�o em [Sele��o adaptativa de contexto](adaptive-context-selection.md).
 
 ## RRF
 

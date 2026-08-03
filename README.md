@@ -220,6 +220,7 @@ foreach ($answer->sources as $source) {
 - **Cache:** `CachedEmbeddingProvider` e `CachedLanguageModel`, ambos PSR-16.
 - **Concorrência:** `FiberBatchEmbeddingExecutor`, sem `Future` na API pública. Providers baseados em `AsyncHttpClient` compartilham com o executor uma única instância de `FiberEventLoop` criada no bootstrap.
 - **Streaming:** contrato independente, sem provider incremental incluído atualmente.
+- **Contexto vazio:** o RAG não chama o LLM sem fontes; retorna a mensagem configurada pela política de ausência de evidência.
 - **PDF textual:** `PdfDocumentLoader` com janelas configuráveis e `PopplerPdfTextExtractor` opcional via binário `pdftotext`.
 
 O pacote inclui `GeminiLanguageModel` para respostas completas. Embeddings Gemini e outros recursos do fornecedor continuam extensíveis pelos contratos públicos.
@@ -256,7 +257,10 @@ Veja [Limitações e escopo](docs/limitations.md) para os impactos práticos.
 | Configurar fornecedores | [Providers](docs/providers.md) |
 | Ingerir livros e PDFs textuais | [Ingestão de PDF](docs/pdf-ingestion.md) |
 | Entender multi-query, RRF e vizinhos | [Pipeline de retrieval](docs/retrieval-pipeline.md) |
+| Entender por que uma ou várias fontes chegam à IA | [Retrieval para iniciantes](docs/retrieval-for-beginners.md) |
 | Auditar o protocolo entregue ao LLM | [Protocolo de prompt v3](docs/prompt-protocol.md) |
+| Reduzir fontes adaptativamente | [Adaptive context](docs/adaptive-context-selection.md) |
+| Comparar com Neuron AI | [ContextEngine x Neuron](docs/neuron-comparison.md) |
 | Configurar decorators | [Cache](docs/caching.md) |
 | Criar adapters próprios | [Extensão](docs/extension-guide.md) |
 | Diagnosticar problemas | [Troubleshooting](docs/troubleshooting.md) |

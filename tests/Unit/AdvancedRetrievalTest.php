@@ -8,11 +8,14 @@ use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
 use Omegaalfa\ContextEngine\Contract\NeighborAwareVectorStore;
+use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
 use Omegaalfa\ContextEngine\Embedding\Embedding;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingBatchRequest;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
+use Omegaalfa\ContextEngine\Exception\InsufficientContextException;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
+use Omegaalfa\ContextEngine\Rag\FixedNoEvidencePolicy;
 use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
 use Omegaalfa\ContextEngine\Retrieval\HeuristicQueryRewriter;
@@ -199,6 +202,83 @@ final class AdvancedRetrievalTest extends TestCase
         self::assertSame(['code'], $execution->diagnostics->retrieval->selectedChunkIds);
         self::assertGreaterThan(0, $execution->diagnostics->promptCharacters);
         self::assertArrayHasKey('model', $execution->diagnostics->timingsMilliseconds);
+    }
+
+    public function testNoEvidenceNeverCallsLanguageModelAndStreamingDoesNotSimulateDeltas(): void
+    {
+        $space = new EmbeddingSpace('test', 'model', 1);
+        $provider = new class ($space) implements EmbeddingProvider {
+            public function __construct(private EmbeddingSpace $space) {}
+            public function space(): EmbeddingSpace
+            {
+                return $this->space;
+            }
+            public function embed(string $text, string $tenantId): Embedding
+            {
+                return new Embedding([1], $this->space);
+            }
+            public function embedBatch(EmbeddingBatchRequest $request): array
+            {
+                return [];
+            }
+        };
+        $store = new class () implements VectorStore {
+            public function storeBatch(array $chunks): void {}
+            public function search(VectorSearchQuery $query): array
+            {
+                return [];
+            }
+            public function deleteChunk(ChunkDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function deleteDocument(DocumentDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function clearCollection(CollectionDeleteQuery $query): int
+            {
+                return 0;
+            }
+        };
+        $model = new class () implements LanguageModel {
+            public int $calls = 0;
+            public function complete(array $messages): string
+            {
+                ++$this->calls;
+                return 'invented';
+            }
+        };
+        $streaming = new class () implements StreamingLanguageModel {
+            public int $calls = 0;
+            public function stream(array $messages): iterable
+            {
+                ++$this->calls;
+                return [];
+            }
+        };
+        $rag = new RagPipeline(
+            new Retriever($provider, $store),
+            new ContextPromptBuilder(),
+            $model,
+            $streaming,
+            new FixedNoEvidencePolicy('Sem evidências suficientes.'),
+        );
+        $execution = $rag->askWithDiagnostics(new Question('Explique.', 'tenant'));
+        self::assertSame('Sem evidências suficientes.', $execution->answer->content);
+        self::assertSame([], $execution->answer->sources);
+        self::assertSame(0, $model->calls);
+        self::assertFalse($execution->diagnostics->modelCalled);
+        self::assertSame(0, $execution->diagnostics->promptCharacters);
+        self::assertSame(0.0, $execution->diagnostics->timingsMilliseconds['model']);
+
+        try {
+            iterator_to_array($rag->stream(new Question('Explique.', 'tenant')));
+            self::fail('Streaming without evidence must fail before calling the provider.');
+        } catch (InsufficientContextException $exception) {
+            self::assertSame('Sem evidências suficientes.', $exception->getMessage());
+        }
+        self::assertSame(0, $streaming->calls);
     }
 
     private function makeResult(string $id, int $position, float $distance): VectorSearchResult

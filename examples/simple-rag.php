@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+$startedAt = hrtime(true);
+
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Omegaalfa\ContextEngine\Bootstrap\Bootstrap;
@@ -18,7 +20,7 @@ EnvLoader::load(dirname(__DIR__) . '/.env');
 
 $questionText = trim(implode(' ', array_slice($argv, 1)));
 if ($questionText === '') {
-    $questionText = 'Converta para PHP 8.4 a função Python optimal_bst presente no contexto.';
+    $questionText = 'Compare Bellman-Ford e Dijkstra quanto a pesos negativos, detecção de ciclos negativos e complexidade.';
 }
 
 $tenantId = EnvLoader::get('CONTEXT_ENGINE_TENANT_ID') ?? 'empresa-exemplo';
@@ -32,13 +34,12 @@ try {
         config: $config,
         languageModelFactory: static fn (
             AsyncHttpClient $http,
-        ): GeminiLanguageModel => new GeminiLanguageModel(
-            apiKey: EnvLoader::get('CONTEXT_ENGINE_GEMINI_API_KEY'),
-            model: EnvLoader::get('CONTEXT_ENGINE_GEMINI_MODEL'),
+        ): OllamaLanguageModel => new OllamaLanguageModel(
+            model: EnvLoader::get('CONTEXT_ENGINE_OLLAMA_MODEL'),
             client: $http
-                ->readTimeout((float) (EnvLoader::getInt('CONTEXT_ENGINE_GEMINI_LLM_TIMEOUT') ?? 180))
-                ->totalTimeout((float) (EnvLoader::getInt('CONTEXT_ENGINE_GEMINI_LLM_TIMEOUT') ?? 180)),
-            baseUrl: EnvLoader::get('CONTEXT_ENGINE_GEMINI_URL'),
+                ->readTimeout(300)
+                ->totalTimeout(300),
+            baseUrl: EnvLoader::get('CONTEXT_ENGINE_OLLAMA_URL')
         ),
     );
 
@@ -58,6 +59,11 @@ try {
             $source->chunk->id,
         );
     }
+    printf(
+        PHP_EOL . 'Execução: %.3f s | Pico de memória: %.2f MiB' . PHP_EOL,
+        (hrtime(true) - $startedAt) / 1_000_000_000,
+        memory_get_peak_usage(true) / 1_048_576,
+    );
 } catch (Throwable $error) {
     fwrite(STDERR, "O exemplo RAG direto falhou: {$error->getMessage()}\n");
     exit(1);

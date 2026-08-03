@@ -27,6 +27,7 @@ final readonly class Retriever
         private ?int $contextChunkLimit = null,
         private ?int $maximumContextCharacters = null,
         ?ReciprocalRankFusion $fusion = null,
+        private ?ContextRelevancePolicy $contextRelevancePolicy = null,
     ) {
         $this->queryRewriter = $queryRewriter ?? new IdentityQueryRewriter();
         $this->neighborExpansion = $neighborExpansion ?? new NeighborExpansion();
@@ -85,10 +86,17 @@ final readonly class Retriever
         [$expanded, $neighborIds] = $this->expand($question, $fused);
         $expansion = self::elapsed($expansionStarted);
         $selectionStarted = hrtime(true);
+        $adaptive = $this->contextRelevancePolicy === null
+            ? ['selected' => $expanded, 'decisions' => []]
+            : new AdaptiveContextSelector($this->contextRelevancePolicy)->select($question->content, $expanded);
         $selection = new ContextSelector(
             $this->contextChunkLimit ?? $this->policy->limit,
             $this->maximumContextCharacters,
-        )->select($expanded);
+        )->select($adaptive['selected']);
+        $selectionDecisions = $this->finalDecisions(
+            $adaptive['decisions'],
+            $selection['discardReasons'],
+        );
         $selectionTime = self::elapsed($selectionStarted);
         $diagnostics = new RetrievalDiagnostics(
             $plan->original,
@@ -110,8 +118,32 @@ final readonly class Retriever
                 'selection' => $selectionTime,
                 'total' => self::elapsed($totalStarted),
             ],
+            $selectionDecisions,
         );
         return new RetrievalOutcome($selection['selected'], $diagnostics);
+    }
+
+    /**
+     * @param list<ContextSelectionDiagnostic> $adaptive
+     * @param array<string, ContextSelectionReason> $budgetDiscardReasons
+     * @return list<ContextSelectionDiagnostic>
+     */
+    private function finalDecisions(array $adaptive, array $budgetDiscardReasons): array
+    {
+        if ($adaptive === []) {
+            return [];
+        }
+        return array_map(
+            static fn (ContextSelectionDiagnostic $decision): ContextSelectionDiagnostic =>
+                isset($budgetDiscardReasons[$decision->chunkId])
+                    ? new ContextSelectionDiagnostic(
+                        $decision->chunkId,
+                        false,
+                        $budgetDiscardReasons[$decision->chunkId],
+                    )
+                    : $decision,
+            $adaptive,
+        );
     }
     /**
      * @param list<VectorSearchResult> $hits

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+$startedAt = hrtime(true);
+
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Omegaalfa\ContextEngine\Provider\Ollama\OllamaEmbeddingProvider;
@@ -77,6 +79,11 @@ try {
         echo "documento={$result->chunk->documentId} chunk={$result->chunk->id}\n";
         echo $result->chunk->content . "\n\n";
     }
+    printf(
+        'Execu��o: %.3f s | Pico de mem�ria: %.2f MiB' . PHP_EOL,
+        (hrtime(true) - $startedAt) / 1_000_000_000,
+        memory_get_peak_usage(true) / 1_048_576,
+    );
 } catch (Throwable $error) {
     fwrite(STDERR, "A busca falhou: {$error->getMessage()}\n");
     exit(1);

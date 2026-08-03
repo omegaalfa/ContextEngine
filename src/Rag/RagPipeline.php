@@ -7,13 +7,16 @@ namespace Omegaalfa\ContextEngine\Rag;
 use InvalidArgumentException;
 use JsonException;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
+use Omegaalfa\ContextEngine\Contract\NoEvidencePolicy;
 use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
+use Omegaalfa\ContextEngine\Exception\InsufficientContextException;
 use Omegaalfa\ContextEngine\Exception\StreamingNotSupportedException;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
 
 final readonly class RagPipeline
 {
+    private NoEvidencePolicy $noEvidencePolicy;
     /**
      * @param Retriever $retriever
      * @param ContextPromptBuilder $prompts
@@ -24,8 +27,11 @@ final readonly class RagPipeline
         private Retriever               $retriever,
         private ContextPromptBuilder    $prompts,
         private LanguageModel           $model,
-        private ?StreamingLanguageModel $streamingModel = null
-    ) {}
+        private ?StreamingLanguageModel $streamingModel = null,
+        ?NoEvidencePolicy $noEvidencePolicy = null,
+    ) {
+        $this->noEvidencePolicy = $noEvidencePolicy ?? new FixedNoEvidencePolicy();
+    }
 
     /**
      * @param Question|string $question
@@ -43,6 +49,21 @@ final readonly class RagPipeline
         $totalStarted = hrtime(true);
         $question = $this->question($question, $tenantId);
         $retrieval = $this->retriever->retrieveWithDiagnostics($question);
+        if ($retrieval->results === []) {
+            return new RagExecution(
+                new Answer($this->noEvidencePolicy->response($question), []),
+                new RagDiagnostics(
+                    $retrieval->diagnostics,
+                    0,
+                    false,
+                    [
+                        'promptBuilding' => 0.0,
+                        'model' => 0.0,
+                        'total' => self::elapsed($totalStarted),
+                    ],
+                ),
+            );
+        }
         $promptStarted = hrtime(true);
         $messages = $this->prompts->build($question, $retrieval->results);
         $promptTime = self::elapsed($promptStarted);
@@ -57,6 +78,7 @@ final readonly class RagPipeline
         return new RagExecution($answer, new RagDiagnostics(
             $retrieval->diagnostics,
             $promptCharacters,
+            true,
             [
                 'promptBuilding' => $promptTime,
                 'model' => $modelTime,
@@ -75,6 +97,9 @@ final readonly class RagPipeline
     {
         $question = $this->question($question, $tenantId);
         $sources = $this->retriever->retrieve($question);
+        if ($sources === []) {
+            throw new InsufficientContextException($this->noEvidencePolicy->response($question));
+        }
         if ($this->streamingModel === null) {
             throw new StreamingNotSupportedException('No incremental streaming language model is configured.');
         }

@@ -12,6 +12,7 @@ final readonly class RagDiagnostics
     public function __construct(
         public RetrievalDiagnostics $retrieval,
         public int $promptCharacters,
+        public bool $modelCalled,
         public array $timingsMilliseconds,
     ) {}
 }

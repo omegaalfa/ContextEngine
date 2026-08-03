@@ -18,23 +18,39 @@ final readonly class ContextSelector
     }
     /**
      * @param list<VectorSearchResult> $candidates
-     * @return array{selected: list<VectorSearchResult>, discarded: list<string>, characters: int}
+     * @return array{
+     *     selected: list<VectorSearchResult>,
+     *     discarded: list<string>,
+     *     discardReasons: array<string, ContextSelectionReason>,
+     *     characters: int
+     * }
      */
     public function select(array $candidates): array
     {
         $selected = [];
         $discarded = [];
+        $discardReasons = [];
         $characters = 0;
         foreach ($candidates as $candidate) {
             $next = $characters + mb_strlen($candidate->chunk->content);
-            if (count($selected) >= $this->chunkLimit
-                || $this->maximumCharacters !== null && $next > $this->maximumCharacters) {
+            if (count($selected) >= $this->chunkLimit) {
                 $discarded[] = $candidate->chunk->id;
+                $discardReasons[$candidate->chunk->id] = ContextSelectionReason::SOURCE_LIMIT;
+                continue;
+            }
+            if ($this->maximumCharacters !== null && $next > $this->maximumCharacters) {
+                $discarded[] = $candidate->chunk->id;
+                $discardReasons[$candidate->chunk->id] = ContextSelectionReason::CONTEXT_BUDGET;
                 continue;
             }
             $selected[] = $candidate;
             $characters = $next;
         }
-        return ['selected' => $selected, 'discarded' => $discarded, 'characters' => $characters];
+        return [
+            'selected' => $selected,
+            'discarded' => $discarded,
+            'discardReasons' => $discardReasons,
+            'characters' => $characters,
+        ];
     }
 }

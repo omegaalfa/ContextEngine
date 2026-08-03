@@ -46,3 +46,11 @@ Essas observações não promovem um modelo como garantia. Retrieval e geração
 ## Privacidade e truncamento
 
 O builder não trunca fontes. O orçamento é aplicado antes dele, descartando chunks inteiros e registrando IDs. O diagnóstico padrão contém IDs, contagens, tamanhos e tempos — nunca chaves, headers, credenciais ou o prompt integral.
+
+## Ausência de evidência
+
+Quando o retrieval não seleciona nenhuma fonte, RagPipeline não chama o LanguageModel. A resposta vem de NoEvidencePolicy, de forma determinística, e o diagnóstico registra modelCalled como false, promptCharacters igual a zero e tempo de modelo igual a zero.
+
+O núcleo fornece FixedNoEvidencePolicy com mensagem configurável. O Bootstrap usa CONTEXT_ENGINE_NO_EVIDENCE_MESSAGE e oferece uma mensagem portuguesa por padrão. Isso evita depender da obediência do modelo para impedir alucinações quando o contexto está vazio.
+
+No contrato incremental, ausência de evidência lança InsufficientContextException antes do provider. A biblioteca não transforma a resposta fixa em deltas simulados.

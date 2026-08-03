@@ -51,6 +51,17 @@ try {
     echo 'Vizinhos: ' . ($report->neighborChunkIds === [] ? 'nenhum' : implode(', ', $report->neighborChunkIds)) . PHP_EOL;
     echo 'Fontes finais: ' . implode(', ', $report->selectedChunkIds) . PHP_EOL;
     echo 'Descartados: ' . ($report->discardedByBudgetChunkIds === [] ? 'nenhum' : implode(', ', $report->discardedByBudgetChunkIds)) . PHP_EOL;
+    if ($report->contextSelection !== []) {
+        echo PHP_EOL . 'Sele��o adaptativa' . PHP_EOL;
+        foreach ($report->contextSelection as $decision) {
+            printf(
+                '  %s chunk=%s motivo=%s' . PHP_EOL,
+                $decision->selected ? 'selecionado' : 'descartado',
+                $decision->chunkId,
+                $decision->reason->value,
+            );
+        }
+    }
     echo PHP_EOL . 'Tempos' . PHP_EOL;
     foreach ($report->timingsMilliseconds as $stage => $milliseconds) {
         printf('  %-16s %8.2f ms' . PHP_EOL, $stage, $milliseconds);

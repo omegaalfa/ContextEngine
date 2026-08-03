@@ -52,6 +52,15 @@ final class ContextEngineConfigFactory
             fusedLimit: self::nullableInteger('CONTEXT_ENGINE_FUSED_LIMIT'),
             contextChunkLimit: self::nullableInteger('CONTEXT_ENGINE_CONTEXT_CHUNK_LIMIT'),
             maximumContextCharacters: self::nullableInteger('CONTEXT_ENGINE_MAXIMUM_CONTEXT_CHARACTERS'),
+            adaptiveContextSelection: self::boolean('CONTEXT_ENGINE_ADAPTIVE_CONTEXT_SELECTION', false),
+            contextMaximumDistanceGap: self::float('CONTEXT_ENGINE_CONTEXT_MAXIMUM_DISTANCE_GAP', 0.08),
+            contextMinimumSources: self::integer('CONTEXT_ENGINE_CONTEXT_MINIMUM_SOURCES', 1),
+            contextMaximumSources: self::integer('CONTEXT_ENGINE_CONTEXT_MAXIMUM_SOURCES', 5),
+            contextPreferSameDocument: self::boolean('CONTEXT_ENGINE_CONTEXT_PREFER_SAME_DOCUMENT', true),
+            noEvidenceMessage: self::string(
+                'CONTEXT_ENGINE_NO_EVIDENCE_MESSAGE',
+                'Não encontrei evidências suficientes no contexto recuperado para responder a essa pergunta.',
+            ),
         );
     }
 
@@ -138,6 +147,21 @@ final class ContextEngineConfigFactory
             throw new InvalidArgumentException("Environment variable {$key} must be finite.");
         }
 
+        return $float;
+    }
+    private static function float(string $key, float $default): float
+    {
+        $value = EnvLoader::get($key);
+        if ($value === null || trim($value) === '') {
+            return $default;
+        }
+        if (!is_numeric($value)) {
+            throw new InvalidArgumentException('Environment variable ' . $key . ' must be numeric.');
+        }
+        $float = (float) $value;
+        if (!is_finite($float)) {
+            throw new InvalidArgumentException('Environment variable ' . $key . ' must be finite.');
+        }
         return $float;
     }
 }

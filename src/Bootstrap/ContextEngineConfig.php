@@ -42,6 +42,12 @@ final readonly class ContextEngineConfig
         public ?int           $fusedLimit = null,
         public ?int           $contextChunkLimit = null,
         public ?int           $maximumContextCharacters = null,
+        public bool           $adaptiveContextSelection = false,
+        public float          $contextMaximumDistanceGap = 0.08,
+        public int            $contextMinimumSources = 1,
+        public int            $contextMaximumSources = 5,
+        public bool           $contextPreferSameDocument = true,
+        public string         $noEvidenceMessage = 'Não encontrei evidências suficientes no contexto recuperado para responder a essa pergunta.',
     ) {
         if (trim($collection) === '' || trim($status) === '') {
             throw new InvalidArgumentException('Collection and status cannot be empty.');
@@ -63,6 +69,13 @@ final readonly class ContextEngineConfig
             || $contextChunkLimit !== null && $contextChunkLimit < 1
             || $maximumContextCharacters !== null && $maximumContextCharacters < 1) {
             throw new InvalidArgumentException('Retrieval expansion and context limits are invalid.');
+        }
+        if (!is_finite($contextMaximumDistanceGap) || $contextMaximumDistanceGap < 0
+            || $contextMinimumSources < 1 || $contextMaximumSources < $contextMinimumSources) {
+            throw new InvalidArgumentException('Adaptive context selection configuration is invalid.');
+        }
+        if (trim($noEvidenceMessage) === '') {
+            throw new InvalidArgumentException('No-evidence message cannot be empty.');
         }
     }
 }

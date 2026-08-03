@@ -32,6 +32,7 @@ final class PromptProtocolTest extends TestCase
             array_map(static fn ($message): array => [$message->role, $message->content], $second),
         );
         self::assertStringContainsString($code, $first[1]->content);
+        self::assertStringContainsString('same language used by the user', $first[0]->content);
         self::assertStringContainsString('origin=' . chr(34) . 'neighbor' . chr(34), $first[1]->content);
         self::assertSame(2, substr_count($first[1]->content, '<SOURCE rank='));
         self::assertStringNotContainsString('base64', strtolower($first[1]->content));
