@@ -20,19 +20,31 @@ use Throwable;
 
 final readonly class IngestionPipeline
 {
+    /**
+     * @param TextSplitter $splitter
+     * @param EmbeddingProvider $embeddings
+     * @param VersionedVectorStore $store
+     * @param BatchEmbeddingExecutor $executor
+     * @param int $batchSize
+     * @param Batcher $batcher
+     */
     public function __construct(
-        private TextSplitter $splitter,
-        private EmbeddingProvider $embeddings,
-        private VersionedVectorStore $store,
+        private TextSplitter           $splitter,
+        private EmbeddingProvider      $embeddings,
+        private VersionedVectorStore   $store,
         private BatchEmbeddingExecutor $executor,
-        private int $batchSize = 32,
-        private Batcher $batcher = new Batcher(),
+        private int                    $batchSize = 32,
+        private Batcher                $batcher = new Batcher(),
     ) {
         if ($batchSize < 1) {
             throw new InvalidArgumentException('Batch size must be greater than zero.');
         }
     }
 
+    /**
+     * @param DocumentLoader $loader
+     * @return IngestionReport
+     */
     public function ingest(DocumentLoader $loader): IngestionReport
     {
         $scheduled = 0;
@@ -219,17 +231,17 @@ final readonly class IngestionPipeline
 
     /** @param list<int> $affected */
     private function partialReport(
-        int $scheduled,
-        int $started,
-        int $completed,
-        int $discarded,
-        int $chunksScheduled,
+        int                    $scheduled,
+        int                    $started,
+        int                    $completed,
+        int                    $discarded,
+        int                    $chunksScheduled,
         BatchExecutionProgress $current,
-        int $persistedBatches,
-        int $persistedChunks,
-        int $documentsActivated,
-        IngestionFailure $failure,
-        array $affected,
+        int                    $persistedBatches,
+        int                    $persistedChunks,
+        int                    $documentsActivated,
+        IngestionFailure       $failure,
+        array                  $affected,
     ): IngestionReport {
         return new IngestionReport(
             $scheduled + $current->scheduled,
@@ -248,6 +260,10 @@ final readonly class IngestionPipeline
         );
     }
 
+    /**
+     * @param DocumentVersion|null $version
+     * @return void
+     */
     private function failVersion(?DocumentVersion $version): void
     {
         if ($version === null) {

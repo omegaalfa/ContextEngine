@@ -15,11 +15,13 @@ final class ContextEngineConfigFactory
     /**
      *
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
-    /** Reads an environment already populated by the process or EnvLoader. */
+    /**
+     * Reads an environment already populated by the process or EnvLoader.
+     *
+     * @return ContextEngineConfig
+     */
     public static function fromEnvironment(): ContextEngineConfig
     {
         return new ContextEngineConfig(
@@ -44,6 +46,12 @@ final class ContextEngineConfigFactory
             retrievalLimit: self::integer('CONTEXT_ENGINE_RETRIEVAL_LIMIT', 5),
             retrievalMetric: self::metric('CONTEXT_ENGINE_RETRIEVAL_METRIC', VectorMetric::COSINE),
             maximumDistance: self::nullableFloat('CONTEXT_ENGINE_MAXIMUM_DISTANCE', 0.45),
+            heuristicQueryPlanning: self::boolean('CONTEXT_ENGINE_HEURISTIC_QUERY_PLANNING', false),
+            neighborBefore: self::integer('CONTEXT_ENGINE_NEIGHBOR_BEFORE', 0),
+            neighborAfter: self::integer('CONTEXT_ENGINE_NEIGHBOR_AFTER', 0),
+            fusedLimit: self::nullableInteger('CONTEXT_ENGINE_FUSED_LIMIT'),
+            contextChunkLimit: self::nullableInteger('CONTEXT_ENGINE_CONTEXT_CHUNK_LIMIT'),
+            maximumContextCharacters: self::nullableInteger('CONTEXT_ENGINE_MAXIMUM_CONTEXT_CHARACTERS'),
         );
     }
 
@@ -67,6 +75,26 @@ final class ContextEngineConfigFactory
     private static function integer(string $key, int $default): int
     {
         return EnvLoader::getInt($key) ?? $default;
+    }
+
+    private static function nullableInteger(string $key): ?int
+    {
+        $value = EnvLoader::get($key);
+        if ($value === null || trim($value) === '' || in_array(strtolower(trim($value)), ['null', 'none', 'off'], true)) {
+            return null;
+        }
+        return EnvLoader::getInt($key)
+            ?? throw new InvalidArgumentException('Environment variable ' . $key . ' must be an integer or null.');
+    }
+
+    private static function boolean(string $key, bool $default): bool
+    {
+        $value = EnvLoader::get($key);
+        if ($value === null || trim($value) === '') {
+            return $default;
+        }
+        return filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE)
+            ?? throw new InvalidArgumentException('Environment variable ' . $key . ' must be boolean.');
     }
 
     /**

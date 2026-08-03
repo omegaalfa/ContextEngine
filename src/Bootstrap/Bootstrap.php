@@ -11,6 +11,9 @@ use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
 use Omegaalfa\ContextEngine\Provider\Ollama\OllamaEmbeddingProvider;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
+use Omegaalfa\ContextEngine\Retrieval\HeuristicQueryRewriter;
+use Omegaalfa\ContextEngine\Retrieval\IdentityQueryRewriter;
+use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
 use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
 use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
@@ -65,6 +68,13 @@ final class Bootstrap
             policy: $policy,
             collection: $config->collection,
             status: $config->status,
+            queryRewriter: $config->heuristicQueryPlanning
+                ? new HeuristicQueryRewriter()
+                : new IdentityQueryRewriter(),
+            neighborExpansion: new NeighborExpansion($config->neighborBefore, $config->neighborAfter),
+            fusedLimit: $config->fusedLimit,
+            contextChunkLimit: $config->contextChunkLimit,
+            maximumContextCharacters: $config->maximumContextCharacters,
         );
         $ingestion = new IngestionPipeline(
             splitter: new RecursiveTextSplitter(

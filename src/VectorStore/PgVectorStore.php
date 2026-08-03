@@ -8,15 +8,18 @@ use InvalidArgumentException;
 use JsonException;
 use LogicException;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
+use Omegaalfa\ContextEngine\Contract\NeighborAwareVectorStore;
 use Omegaalfa\ContextEngine\Contract\VersionedVectorStore;
 use Omegaalfa\ContextEngine\Embedding\EmbeddedChunk;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
 use Omegaalfa\ContextEngine\Exception\InvalidEmbeddingException;
 use Omegaalfa\ContextEngine\Ingestion\DocumentVersion;
 use Omegaalfa\ContextEngine\Ingestion\IngestionState;
+use Omegaalfa\ContextEngine\Retrieval\NeighborSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\VectorMetric as ContextVectorMetric;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
+use Omegaalfa\QueryBuilder\Enums\OrderDirection;
 use Omegaalfa\QueryBuilder\Enums\SqlOperator;
 use Omegaalfa\QueryBuilder\Exceptions\DatabaseException;
 use Omegaalfa\QueryBuilder\Exceptions\QueryException;
@@ -25,7 +28,7 @@ use Omegaalfa\QueryBuilder\PostgreSQL\PgVector\Vector;
 use Omegaalfa\QueryBuilder\PostgreSQL\PgVector\VectorMetric;
 use Omegaalfa\QueryBuilder\QueryBuilder;
 
-final readonly class PgVectorStore implements VersionedVectorStore
+final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwareVectorStore
 {
     /**
      * @param QueryBuilder $query
@@ -136,7 +139,7 @@ final readonly class PgVectorStore implements VersionedVectorStore
     public function search(VectorSearchQuery $query): array
     {
         $space = $query->embedding->space;
-        $fields = [$this->schema->chunkId, $this->schema->documentId, $this->schema->tenantId, $this->schema->collection, $this->schema->status, $this->schema->content, $this->schema->position, $this->schema->metadata];
+        $fields = [$this->schema->chunkId, $this->schema->documentId, $this->schema->documentVersion, $this->schema->tenantId, $this->schema->collection, $this->schema->status, $this->schema->content, $this->schema->position, $this->schema->metadata];
         $metric = match ($query->policy->metric) {
             ContextVectorMetric::L2 => VectorMetric::L2,
             ContextVectorMetric::INNER_PRODUCT => VectorMetric::INNER_PRODUCT,
@@ -165,9 +168,62 @@ final readonly class PgVectorStore implements VersionedVectorStore
                 }
             }
             $chunk = new Chunk((string)$row[$this->schema->chunkId], (string)$row[$this->schema->documentId], (string)$row[$this->schema->tenantId], (string)$row[$this->schema->content], (int)$row[$this->schema->position], $metadata, (string)$row[$this->schema->collection], (string)$row[$this->schema->status]);
-            $found[] = new VectorSearchResult($chunk, $distance);
+            $found[] = new VectorSearchResult($chunk, $distance, (string)$row[$this->schema->documentVersion]);
         }
         return $found;
+    }
+
+    /** @return list<Chunk> */
+    public function neighbors(NeighborSearchQuery $query): array
+    {
+        $from = max(0, $query->position - $query->before);
+        $to = $query->position + $query->after;
+        $fields = [
+            $this->schema->chunkId,
+            $this->schema->documentId,
+            $this->schema->tenantId,
+            $this->schema->collection,
+            $this->schema->status,
+            $this->schema->content,
+            $this->schema->position,
+            $this->schema->metadata,
+        ];
+        $operation = $this->query->select($this->schema->table, $fields)
+            ->where($this->schema->tenantId, SqlOperator::EQUALS, $query->tenantId)
+            ->where($this->schema->collection, SqlOperator::EQUALS, $query->collection)
+            ->where($this->schema->status, SqlOperator::EQUALS, $query->status)
+            ->where($this->schema->documentId, SqlOperator::EQUALS, $query->documentId)
+            ->where($this->schema->documentVersion, SqlOperator::EQUALS, $query->documentVersion)
+            ->where($this->schema->ingestionState, SqlOperator::EQUALS, IngestionState::ACTIVE->value)
+            ->where($this->schema->position, SqlOperator::GREATER_THAN_OR_EQUALS, $from)
+            ->where($this->schema->position, SqlOperator::LESS_THAN_OR_EQUALS, $to)
+            ->orderBy($this->schema->position, OrderDirection::ASC)
+            ->limit($query->before + $query->after + 1);
+        $this->applySpace($operation, $query->space);
+        $result = $operation->execute(false);
+        $neighbors = [];
+        foreach ($result->data as $row) {
+            $decoded = json_decode((string)$row[$this->schema->metadata], true, flags: JSON_THROW_ON_ERROR);
+            $metadata = [];
+            if (is_array($decoded)) {
+                foreach ($decoded as $key => $value) {
+                    if (is_string($key) && (is_scalar($value) || $value === null)) {
+                        $metadata[$key] = $value;
+                    }
+                }
+            }
+            $neighbors[] = new Chunk(
+                (string)$row[$this->schema->chunkId],
+                (string)$row[$this->schema->documentId],
+                (string)$row[$this->schema->tenantId],
+                (string)$row[$this->schema->content],
+                (int)$row[$this->schema->position],
+                $metadata,
+                (string)$row[$this->schema->collection],
+                (string)$row[$this->schema->status],
+            );
+        }
+        return $neighbors;
     }
 
     /**

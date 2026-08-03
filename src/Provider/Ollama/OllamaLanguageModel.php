@@ -16,12 +16,24 @@ use Omegaalfa\HttpClient\Http\AsyncHttpClient;
 /** Buffered Ollama chat adapter. It intentionally does not claim streaming support. */
 final readonly class OllamaLanguageModel implements CacheableLanguageModel
 {
+    /**
+     * @var JsonClient
+     */
     private JsonClient $http;
 
+    /**
+     * @var string
+     */
     public string $model;
 
+    /**
+     * @var string
+     */
     private string $baseUrl;
 
+    /**
+     * @var string|int|null
+     */
     private string|int|null $keepAlive;
 
     /** @var array<string, bool|float|int|string> */
@@ -31,10 +43,10 @@ final readonly class OllamaLanguageModel implements CacheableLanguageModel
      * @param array<string, bool|float|int|string> $options Generation options understood by Ollama.
      */
     public function __construct(
-        string $model,
+        string          $model,
         AsyncHttpClient $client,
-        string $baseUrl = 'http://127.0.0.1:11434',
-        array $options = [],
+        string          $baseUrl = 'http://127.0.0.1:11434',
+        array           $options = [],
         string|int|null $keepAlive = null,
     ) {
         $this->model = ProviderConfiguration::nonEmpty($model, 'Ollama language model');
@@ -75,6 +87,9 @@ final readonly class OllamaLanguageModel implements CacheableLanguageModel
         return self::content($this->http->post($this->baseUrl . '/api/chat', $payload));
     }
 
+    /**
+     * @return string
+     */
     public function generationFingerprint(): string
     {
         try {

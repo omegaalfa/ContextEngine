@@ -25,9 +25,7 @@ final readonly class RagPipeline
         private ContextPromptBuilder    $prompts,
         private LanguageModel           $model,
         private ?StreamingLanguageModel $streamingModel = null
-    )
-    {
-    }
+    ) {}
 
     /**
      * @param Question|string $question
@@ -37,9 +35,34 @@ final readonly class RagPipeline
      */
     public function ask(Question|string $question, ?string $tenantId = null): Answer
     {
+        return $this->askWithDiagnostics($question, $tenantId)->answer;
+    }
+
+    public function askWithDiagnostics(Question|string $question, ?string $tenantId = null): RagExecution
+    {
+        $totalStarted = hrtime(true);
         $question = $this->question($question, $tenantId);
-        $sources = $this->retriever->retrieve($question);
-        return new Answer($this->model->complete($this->prompts->build($question, $sources)), $sources);
+        $retrieval = $this->retriever->retrieveWithDiagnostics($question);
+        $promptStarted = hrtime(true);
+        $messages = $this->prompts->build($question, $retrieval->results);
+        $promptTime = self::elapsed($promptStarted);
+        $modelStarted = hrtime(true);
+        $content = $this->model->complete($messages);
+        $modelTime = self::elapsed($modelStarted);
+        $answer = new Answer($content, $retrieval->results);
+        $promptCharacters = array_sum(array_map(
+            static fn ($message): int => mb_strlen($message->content),
+            $messages,
+        ));
+        return new RagExecution($answer, new RagDiagnostics(
+            $retrieval->diagnostics,
+            $promptCharacters,
+            [
+                'promptBuilding' => $promptTime,
+                'model' => $modelTime,
+                'total' => self::elapsed($totalStarted),
+            ],
+        ));
     }
 
     /**
@@ -72,5 +95,10 @@ final readonly class RagPipeline
             throw new InvalidArgumentException('tenantId is required when question is a string.');
         }
         return new Question($question, $tenantId);
+    }
+
+    private static function elapsed(int $started): float
+    {
+        return (hrtime(true) - $started) / 1_000_000;
     }
 }

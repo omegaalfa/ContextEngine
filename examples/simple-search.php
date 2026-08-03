@@ -22,7 +22,7 @@ EnvLoader::load(dirname(__DIR__) . '/.env');
 
 $questionText = trim(implode(' ', array_slice($argv, 1)));
 if ($questionText === '') {
-    $questionText = 'Em quanto tempo posso solicitar um reembolso?';
+    $questionText = 'Converta para PHP 8.4 a função Python optimal_bst presente no contexto.';
 }
 
 $tenantId = EnvLoader::get('CONTEXT_ENGINE_TENANT_ID') ?? 'empresa-exemplo';

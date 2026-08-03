@@ -42,8 +42,7 @@ final readonly class GeminiLanguageModel implements CacheableLanguageModel
         AsyncHttpClient $client,
         string          $baseUrl = 'https://generativelanguage.googleapis.com/v1beta',
         array           $generationConfig = [],
-    )
-    {
+    ) {
         $apiKey = ProviderConfiguration::nonEmpty($apiKey, 'Gemini API key');
         $this->model = ProviderConfiguration::nonEmpty($model, 'Gemini language model');
         $this->baseUrl = ProviderConfiguration::baseUrl($baseUrl);

@@ -12,9 +12,14 @@ use Omegaalfa\ContextEngine\Support\TextNormalizer;
 
 final readonly class RecursiveTextSplitter implements TextSplitter
 {
+    /**
+     * @param int $chunkSize
+     * @param int $overlap
+     * @param TextNormalizer $normalizer
+     */
     public function __construct(
-        public int $chunkSize = 1000,
-        public int $overlap = 150,
+        public int             $chunkSize = 1000,
+        public int             $overlap = 150,
         private TextNormalizer $normalizer = new TextNormalizer(),
     ) {
         if ($chunkSize < 1 || $overlap < 0 || $overlap >= $chunkSize) {
@@ -22,6 +27,9 @@ final readonly class RecursiveTextSplitter implements TextSplitter
         }
     }
 
+    /**
+     * @return string
+     */
     public function fingerprint(): string
     {
         return hash('sha256', implode("\0", ['recursive-text-splitter', '2', (string)$this->chunkSize, (string)$this->overlap]));
@@ -62,6 +70,12 @@ final readonly class RecursiveTextSplitter implements TextSplitter
         }
     }
 
+    /**
+     * @param string $text
+     * @param int $start
+     * @param int $hardEnd
+     * @return int
+     */
     private function semanticEnd(string $text, int $start, int $hardEnd): int
     {
         $window = mb_substr($text, $start, $hardEnd - $start);

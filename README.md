@@ -111,6 +111,7 @@ Exemplos executáveis:
 php examples/simple-ingestion.php
 php examples/simple-search.php "Em quanto tempo posso solicitar um reembolso?"
 php examples/simple-rag.php "Em quanto tempo posso solicitar um reembolso?"
+php examples/ingest-algorithms-book.php
 ```
 
 `simple-ingestion.php` usa o Bootstrap tipado e aceita opcionalmente o caminho de outro arquivo como primeiro argumento. O segundo comando faz somente retrieval vetorial e mostra os chunks encontrados; a LLM é chamada apenas pelo terceiro comando.
@@ -254,6 +255,8 @@ Veja [Limitações e escopo](docs/limitations.md) para os impactos práticos.
 | Consultar termos centrais | [Conceitos](docs/core-concepts.md) |
 | Configurar fornecedores | [Providers](docs/providers.md) |
 | Ingerir livros e PDFs textuais | [Ingestão de PDF](docs/pdf-ingestion.md) |
+| Entender multi-query, RRF e vizinhos | [Pipeline de retrieval](docs/retrieval-pipeline.md) |
+| Auditar o protocolo entregue ao LLM | [Protocolo de prompt v3](docs/prompt-protocol.md) |
 | Configurar decorators | [Cache](docs/caching.md) |
 | Criar adapters próprios | [Extensão](docs/extension-guide.md) |
 | Diagnosticar problemas | [Troubleshooting](docs/troubleshooting.md) |

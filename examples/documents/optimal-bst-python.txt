@@ -1,0 +1,222 @@
+# Implementação de uma árvore de busca binária ótima
+
+Uma árvore de busca binária ótima é construída levando em consideração a frequência ou a probabilidade com que cada chave será pesquisada.
+
+Diferentemente de uma árvore balanceada comum, seu objetivo não é necessariamente minimizar a altura total da árvore. O objetivo é minimizar o **custo esperado das buscas**, colocando chaves mais consultadas em posições que reduzam a quantidade média de nós examinados.
+
+Considere:
+
+* `k1, k2, ..., kn`: chaves reais em ordem crescente;
+* `p1, p2, ..., pn`: probabilidades de buscas bem-sucedidas pelas chaves reais;
+* `q0, q1, ..., qn`: probabilidades de buscas malsucedidas, representadas por chaves fictícias;
+* `e[i][j]`: menor custo esperado para uma árvore contendo as chaves de `ki` até `kj`;
+* `w[i][j]`: soma das probabilidades presentes no subproblema de `ki` até `kj`;
+* `root[i][j]`: índice da chave escolhida como raiz da árvore ótima do intervalo.
+
+Para uma subárvore vazia, na qual `j = i - 1`, temos:
+
+```text
+e[i][i - 1] = q[i - 1]
+w[i][i - 1] = q[i - 1]
+```
+
+Para cada intervalo de chaves `ki ... kj`, todas as chaves do intervalo são testadas como possíveis raízes.
+
+Quando uma chave `kr` é escolhida como raiz, o custo candidato é calculado por:
+
+```text
+e[i][r - 1] + e[r + 1][j] + w[i][j]
+```
+
+A primeira parcela representa o custo esperado da subárvore esquerda. A segunda representa o custo esperado da subárvore direita. A terceira acrescenta o aumento de profundidade sofrido por todos os elementos das duas subárvores.
+
+A raiz que produzir o menor custo é armazenada em `root[i][j]`.
+
+Algoritmo OPTIMAL-BST para árvores de busca binária ótimas.
+
+A implementação de referência abaixo calcula as tabelas e, w e root.
+os casos-base e a convenção de índices.
+
+## Implementação em Python
+
+A implementação abaixo utiliza índices compatíveis com a formulação matemática do algoritmo. A posição zero de `p` não é utilizada, enquanto `q` começa na posição zero.
+
+```python
+from math import inf
+from typing import Sequence
+
+
+def optimal_bst(
+    p: Sequence[float],
+    q: Sequence[float],
+    n: int,
+) -> tuple[list[list[float]], list[list[int]]]:
+    """
+    Calcula as tabelas de custo esperado e de raízes de uma
+    árvore de busca binária ótima.
+
+    p[1..n] contém as probabilidades das chaves reais.
+    q[0..n] contém as probabilidades das buscas malsucedidas.
+    """
+
+    e = [
+        [0.0 for _ in range(n + 1)]
+        for _ in range(n + 2)
+    ]
+
+    w = [
+        [0.0 for _ in range(n + 1)]
+        for _ in range(n + 2)
+    ]
+
+    root = [
+        [0 for _ in range(n + 1)]
+        for _ in range(n + 1)
+    ]
+
+    # Inicializa os subproblemas sem chaves reais.
+    for i in range(1, n + 2):
+        e[i][i - 1] = q[i - 1]
+        w[i][i - 1] = q[i - 1]
+
+    # length representa a quantidade de chaves reais no intervalo.
+    for length in range(1, n + 1):
+        for i in range(1, n - length + 2):
+            j = i + length - 1
+
+            e[i][j] = inf
+            w[i][j] = w[i][j - 1] + p[j] + q[j]
+
+            # Testa cada chave do intervalo como possível raiz.
+            for r in range(i, j + 1):
+                candidate_cost = (
+                    e[i][r - 1]
+                    + e[r + 1][j]
+                    + w[i][j]
+                )
+
+                if candidate_cost < e[i][j]:
+                    e[i][j] = candidate_cost
+                    root[i][j] = r
+
+    return e, root
+```
+
+## Reconstrução da estrutura da árvore
+
+A tabela `root` informa qual chave deve ser usada como raiz de cada intervalo.
+
+A função seguinte percorre essa tabela recursivamente e descreve a estrutura resultante:
+
+```python
+def build_optimal_bst_description(
+    root: list[list[int]],
+    i: int,
+    j: int,
+    parent: int | None = None,
+    direction: str = "root",
+) -> list[str]:
+    if j < i:
+        dummy_index = j
+
+        if parent is None:
+            return [f"d{dummy_index} é a raiz"]
+
+        return [
+            f"d{dummy_index} é o filho {direction} de k{parent}"
+        ]
+
+    current_root = root[i][j]
+
+    if parent is None:
+        lines = [f"k{current_root} é a raiz"]
+    else:
+        lines = [
+            f"k{current_root} é o filho {direction} de k{parent}"
+        ]
+
+    lines.extend(
+        build_optimal_bst_description(
+            root,
+            i,
+            current_root - 1,
+            current_root,
+            "à esquerda",
+        )
+    )
+
+    lines.extend(
+        build_optimal_bst_description(
+            root,
+            current_root + 1,
+            j,
+            current_root,
+            "à direita",
+        )
+    )
+
+    return lines
+```
+
+## Exemplo de utilização
+
+```python
+p = [
+    0.0,
+    0.15,
+    0.10,
+    0.05,
+    0.10,
+    0.20,
+]
+
+q = [
+    0.05,
+    0.10,
+    0.05,
+    0.05,
+    0.05,
+    0.10,
+]
+
+n = 5
+
+cost, root = optimal_bst(p, q, n)
+
+print(f"Custo esperado mínimo: {cost[1][n]:.2f}")
+
+for line in build_optimal_bst_description(root, 1, n):
+    print(line)
+```
+
+Para essas probabilidades, a chave `k2` é escolhida como raiz da árvore ótima, embora `k5` tenha a maior probabilidade individual. Isso acontece porque o algoritmo considera o custo esperado da árvore inteira, e não apenas a probabilidade isolada de cada chave.
+
+## Complexidade
+
+O algoritmo utiliza três laços principais:
+
+1. tamanho do intervalo;
+2. posição inicial do intervalo;
+3. candidatos a raiz dentro do intervalo.
+
+Por esse motivo, sua complexidade de tempo é:
+
+```text
+O(n³)
+```
+
+As tabelas `e`, `w` e `root` armazenam uma quantidade quadrática de valores. Portanto, a complexidade de espaço é:
+
+```text
+O(n²)
+```
+
+Uma implementação equivalente em PHP 8.4 deve preservar:
+
+* a inicialização dos casos-base;
+* o preenchimento por comprimentos crescentes;
+* o cálculo incremental de `w[i][j]`;
+* o teste de todas as raízes candidatas;
+* o armazenamento do menor custo em `e[i][j]`;
+* o armazenamento da raiz escolhida em `root[i][j]`;
+* a convenção de índices adotada.

@@ -1,5 +1,7 @@
 # Retrieval
 
+> Leia também: [pipeline avançada, RRF, vizinhos e diagnósticos](retrieval-pipeline.md) e [protocolo de prompt v3](prompt-protocol.md).
+
 ## Tipos
 
 - `RetrievalPolicy(int $limit = 5, VectorMetric $metric = COSINE, ?float $maximumDistance = null)`: limit 1–100; distância máxima não negativa.

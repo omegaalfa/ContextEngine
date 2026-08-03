@@ -15,7 +15,7 @@ use Omegaalfa\Utils\EnvLoader\EnvLoader;
 // O arquivo apenas completa valores ausentes; processo, Docker e CI têm precedência.
 EnvLoader::load(dirname(__DIR__) . '/.env');
 
-$path = $argv[1] ?? __DIR__ . '/documents/politica-reembolso.txt';
+$path = $argv[1] ?? __DIR__ . '/documents/optimal-bst-python.txt';
 $tenantId = EnvLoader::get('CONTEXT_ENGINE_TENANT_ID') ?? 'empresa-exemplo';
 
 try {
@@ -38,8 +38,17 @@ try {
     $loader = new TextFileLoader(
         path: $path,
         tenantId: $tenantId,
+        collection: $config->collection,
+        granularity: \Omegaalfa\ContextEngine\Loader\TextFileGranularity::WHOLE_FILE,
+        metadata: [
+            'title' => 'Optimal Binary Search Tree',
+            'source_language' => 'pt-BR',
+            'implementation_language' => 'python',
+            'type' => 'synthetic-algorithm',
+        ],
     );
 
+    echo "Collection: {$config->collection}\n"; echo "status: {$config->status}\n"; echo "tenantId: {$tenantId}\n";
     $report = $context->ingestion->ingest($loader);
 
     echo "\nIngestão concluída\n";

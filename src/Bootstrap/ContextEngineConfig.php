@@ -36,6 +36,12 @@ final readonly class ContextEngineConfig
         public int            $retrievalLimit = 5,
         public VectorMetric   $retrievalMetric = VectorMetric::COSINE,
         public ?float         $maximumDistance = 0.45,
+        public bool           $heuristicQueryPlanning = false,
+        public int            $neighborBefore = 0,
+        public int            $neighborAfter = 0,
+        public ?int           $fusedLimit = null,
+        public ?int           $contextChunkLimit = null,
+        public ?int           $maximumContextCharacters = null,
     ) {
         if (trim($collection) === '' || trim($status) === '') {
             throw new InvalidArgumentException('Collection and status cannot be empty.');
@@ -51,6 +57,12 @@ final readonly class ContextEngineConfig
         }
         if ($maximumDistance !== null && (!is_finite($maximumDistance) || $maximumDistance < 0)) {
             throw new InvalidArgumentException('Maximum distance must be finite and non-negative.');
+        }
+        if ($neighborBefore < 0 || $neighborAfter < 0
+            || $fusedLimit !== null && $fusedLimit < 1
+            || $contextChunkLimit !== null && $contextChunkLimit < 1
+            || $maximumContextCharacters !== null && $maximumContextCharacters < 1) {
+            throw new InvalidArgumentException('Retrieval expansion and context limits are invalid.');
         }
     }
 }

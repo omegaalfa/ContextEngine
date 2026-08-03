@@ -5,7 +5,7 @@
 | 🚀 Começar | [Primeiros passos — guia completo](getting-started.md) · [Instalação](installation.md) |
 | 🧭 Design | [Arquitetura](architecture.md) · [Conceitos](core-concepts.md) · [API](api-reference.md) |
 | 📚 Conhecimento | [Documentos e splitters](documents-and-splitting.md) · [Ingestão](ingestion.md) · [PDF](pdf-ingestion.md) · [Embeddings](embeddings.md) |
-| 🧠 RAG | [Vector store](vector-store.md) · [Schema](database-schema.md) · [Retrieval](retrieval.md) · [Pipeline RAG](rag-pipeline.md) |
+| 🧠 RAG | [Vector store](vector-store.md) · [Schema](database-schema.md) · [Retrieval](retrieval.md) · [Pipeline avançada](retrieval-pipeline.md) · [Protocolo de prompt](prompt-protocol.md) · [Pipeline RAG](rag-pipeline.md) |
 | 🔌 Infra | [Providers](providers.md) · [Cache](caching.md) · [Concorrência](concurrency.md) · [Streaming](streaming.md) |
 | 🛡️ Operação | [Erros](error-handling.md) · [Segurança](security.md) · [Performance](performance.md) · [Troubleshooting](troubleshooting.md) · [Limitações](limitations.md) |
 | 🧪 Desenvolvimento | [Docker](docker-integration.md) · [Testes](testing.md) · [Extensão](extension-guide.md) · [Roadmap](roadmap.md) |

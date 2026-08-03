@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Tests\Unit;
 
-use Omegaalfa\ContextEngine\Contract\{BatchEmbeddingExecutor,DocumentLoader,EmbeddingProvider,TextSplitter,VersionedVectorStore};
 use Fiber;
 use InvalidArgumentException;
 use LogicException;
+use Omegaalfa\ContextEngine\Contract\{BatchEmbeddingExecutor,DocumentLoader,EmbeddingProvider,TextSplitter,VersionedVectorStore};
 use Omegaalfa\ContextEngine\Document\Document;
 use Omegaalfa\ContextEngine\Embedding\Embedding;
 use Omegaalfa\ContextEngine\Embedding\{EmbeddingBatchRequest,EmbeddingSpace};

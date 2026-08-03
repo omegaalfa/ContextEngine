@@ -16,8 +16,7 @@ final readonly class Document
         public array  $metadata = [],
         public string $collection = 'default',
         public string $status = 'active'
-    )
-    {
+    ) {
         if (trim($id) === '' || trim($tenantId) === '') {
             throw new InvalidArgumentException('Document id and tenant id cannot be empty.');
         }

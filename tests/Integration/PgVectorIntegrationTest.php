@@ -8,9 +8,7 @@ use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Document\Document;
 use Omegaalfa\ContextEngine\Embedding\{EmbeddedChunk,Embedding,EmbeddingSpace};
 use Omegaalfa\ContextEngine\Ingestion\DocumentVersion;
-use PDO;
-use Throwable;
-use Omegaalfa\ContextEngine\Retrieval\{VectorSearchQuery};
+use Omegaalfa\ContextEngine\Retrieval\{NeighborSearchQuery,VectorSearchQuery};
 use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
@@ -18,7 +16,9 @@ use Omegaalfa\ContextEngine\VectorStore\PgVectorStore;
 use Omegaalfa\QueryBuilder\Connection\PDOConnection;
 use Omegaalfa\QueryBuilder\{DatabaseSettings,QueryBuilder};
 use Omegaalfa\QueryBuilder\PostgreSQL\PgVector\Vector;
+use PDO;
 use PHPUnit\Framework\TestCase;
+use Throwable;
 
 final class PgVectorIntegrationTest extends TestCase
 {
@@ -121,6 +121,52 @@ final class PgVectorIntegrationTest extends TestCase
         } catch (Throwable) {
             self::assertSame(0, (int)$this->pdo->query("SELECT count(*) FROM context_chunks WHERE chunk_id='duplicate'")->fetchColumn());
         }
+    }
+
+    public function testNeighborsStayInsideActiveDocumentVersionAndVectorSpace(): void
+    {
+        $space = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'neighbors');
+        $document = new Document('neighbor-doc', 'tenant-a', 'version content', collection: 'docs');
+        $version = new DocumentVersion($document, $space, 'splitter-v1');
+        $chunks = [];
+        foreach (['before', 'hit', 'after'] as $position => $id) {
+            $chunks[] = new EmbeddedChunk(
+                new Chunk($id, $document->id, 'tenant-a', $id, $position, [], 'docs'),
+                new Embedding($this->vector(0), $space),
+            );
+        }
+        $this->store->beginVersion($version);
+        $this->store->stageBatch($version, $chunks);
+        $this->store->activateVersion($version);
+        $neighbors = $this->store->neighbors(new NeighborSearchQuery(
+            'tenant-a',
+            'docs',
+            'active',
+            $document->id,
+            $version->id,
+            $space,
+            1,
+            1,
+            1,
+        ));
+        self::assertSame(
+            ['before', 'hit', 'after'],
+            array_map(static fn (Chunk $chunk): string => $chunk->id, $neighbors),
+        );
+        self::assertSame([0, 1, 2], array_map(static fn (Chunk $chunk): int => $chunk->position, $neighbors));
+
+        $otherSpace = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'other-space');
+        self::assertSame([], $this->store->neighbors(new NeighborSearchQuery(
+            'tenant-a',
+            'docs',
+            'active',
+            $document->id,
+            $version->id,
+            $otherSpace,
+            1,
+            1,
+            1,
+        )));
     }
     public function testDeletionOperationsNeverEscapeTenantCollectionOrVectorSpace(): void
     {

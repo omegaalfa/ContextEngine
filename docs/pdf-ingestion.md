@@ -134,6 +134,25 @@ printf(
 
 ---
 
+## 📗 Livro de exemplo da raiz
+
+O repositório possui um exemplo preparado especificamente para `Algoritimos e estrutura de dados em PHP.pdf`:
+
+```bash
+php examples/ingest-algorithms-book.php
+```
+
+Ele utiliza:
+
+- tenant de `CONTEXT_ENGINE_TENANT_ID`;
+- collection `CONTEXT_ENGINE_PDF_COLLECTION`, com fallback `algorithms`;
+- `bge-m3` com 1.024 dimensões;
+- três páginas por `Document`;
+- até 500 páginas e 100 MB de texto extraído;
+- timeout de extração configurável;
+- Gemini somente como LLM do contexto, sem chamada HTTP durante a ingestão.
+
+Para pesquisar o conteúdo depois, configure o retrieval com a mesma collection `algorithms`.
 ## 🏷️ Metadata gerada automaticamente
 
 Para uma janela com páginas 143, 144 e 145:

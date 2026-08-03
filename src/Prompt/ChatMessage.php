@@ -23,7 +23,5 @@ final readonly class ChatMessage
      * @param Role $role
      * @param string $content
      */
-    public function __construct(public Role $role, public string $content)
-    {
-    }
+    public function __construct(public Role $role, public string $content) {}
 }
