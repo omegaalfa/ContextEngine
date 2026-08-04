@@ -20,7 +20,7 @@ EnvLoader::load(dirname(__DIR__) . '/.env');
 
 $questionText = trim(implode(' ', array_slice($argv, 1)));
 if ($questionText === '') {
-    $questionText = 'Compare Bellman-Ford e Dijkstra quanto a pesos negativos, detecção de ciclos negativos e complexidade.';
+    $questionText = 'Escreva em PHP 8.4 exatamente o algoritmo de Bellman-Ford mostrado no livro.';
 }
 
 $tenantId = EnvLoader::get('CONTEXT_ENGINE_TENANT_ID') ?? 'empresa-exemplo';

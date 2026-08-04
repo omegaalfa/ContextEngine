@@ -41,8 +41,13 @@ O corpus Neuron � reconstru�do de `examples/documents` em mem�ria a cada e
 | `NEURON_OLLAMA_URL` | `http://127.0.0.1:11434/api` |
 | `NEURON_EMBEDDING_MODEL` | `bge-m3` |
 | `NEURON_LANGUAGE_MODEL` | `qwen3:8b` |
-| `NEURON_TOP_K` | `5` |
-| `NEURON_MAXIMUM_DISTANCE` | `0.45` |
+| `NEURON_TOP_K` | `10` |
+| `NEURON_MAXIMUM_DISTANCE` | `0.60` |
+| `NEURON_RERANKER` | `none`, `localai`, `cohere` ou `jina` |
+| `NEURON_RERANKER_TOP_N` | `1` |
+| `NEURON_RERANKER_MODEL` | padr�o do provider escolhido |
+| `NEURON_RERANKER_KEY` | obrigat�ria para Cohere e Jina |
+| `NEURON_RERANKER_URL` | `http://127.0.0.1:8080` para LocalAI |
 | `NEURON_CHUNK_SIZE` | `1000` |
 | `NEURON_WORD_OVERLAP` | `25` |
 | `NEURON_DOCUMENTS_PATH` | `examples/documents` |
@@ -53,6 +58,31 @@ O corpus Neuron � reconstru�do de `examples/documents` em mem�ria a cada e
 O score do Neuron � similaridade. A busca imprime tamb�m `1 - score` como dist�ncia. No RAG, `FixedThresholdPostProcessor` usa `1 - NEURON_MAXIMUM_DISTANCE` como similaridade m�nima.
 
 Essa compara��o avalia qualidade e ergonomia, mas n�o � um benchmark cient�fico: stores, splitters, prompts e ciclos de persist�ncia s�o diferentes.
+
+## Melhor pipeline nativo
+
+~~~text
+topK=10
+   |
+FixedThreshold
+   |
+LocalAI, Cohere ou Jina reranker
+   |
+topN=1
+~~~
+
+Exemplo com Jina:
+
+~~~bash
+export NEURON_RERANKER=jina
+export NEURON_RERANKER_KEY=sua-chave
+export NEURON_RERANKER_TOP_N=1
+php examples/neuron-simple-rag.php
+~~~
+
+O reranker LocalAI exige um servidor LocalAI com endpoint `/v1/rerank`; o Ollama n�o fornece esse endpoint. Quando `NEURON_RERANKER=none`, o exemplo executa apenas topK e threshold.
+
+Se nenhuma fonte sobreviver ao threshold ou reranker, o exemplo encerra antes de `RAG::chat()` e imprime N�o h� evid�ncias suficientes no corpus. Assim o modelo n�o responde usando apenas conhecimento interno.
 
 ## PostgreSQL existente
 

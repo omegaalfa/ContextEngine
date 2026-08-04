@@ -112,6 +112,8 @@ php examples/simple-ingestion.php
 php examples/simple-search.php "Em quanto tempo posso solicitar um reembolso?"
 php examples/simple-rag.php "Em quanto tempo posso solicitar um reembolso?"
 php examples/ingest-algorithms-book.php
+php examples/llphant-simple-search.php
+php examples/llphant-simple-rag.php
 ```
 
 `simple-ingestion.php` usa o Bootstrap tipado e aceita opcionalmente o caminho de outro arquivo como primeiro argumento. O segundo comando faz somente retrieval vetorial e mostra os chunks encontrados; a LLM é chamada apenas pelo terceiro comando.
@@ -258,6 +260,7 @@ Veja [Limitações e escopo](docs/limitations.md) para os impactos práticos.
 | Ingerir livros e PDFs textuais | [Ingestão de PDF](docs/pdf-ingestion.md) |
 | Entender multi-query, RRF e vizinhos | [Pipeline de retrieval](docs/retrieval-pipeline.md) |
 | Entender por que uma ou várias fontes chegam à IA | [Retrieval para iniciantes](docs/retrieval-for-beginners.md) |
+| Comparar com LLPhant usando Ollama | [ContextEngine e LLPhant](docs/llphant-comparison.md) |
 | Auditar o protocolo entregue ao LLM | [Protocolo de prompt v3](docs/prompt-protocol.md) |
 | Reduzir fontes adaptativamente | [Adaptive context](docs/adaptive-context-selection.md) |
 | Comparar com Neuron AI | [ContextEngine x Neuron](docs/neuron-comparison.md) |
