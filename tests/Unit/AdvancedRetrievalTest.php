@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Tests\Unit;
 
+use DateTimeImmutable;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
@@ -28,6 +29,8 @@ use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
+use Omegaalfa\ContextEngine\Retrieval\VersionSelectionPolicy;
+use Omegaalfa\ContextEngine\Retrieval\VersionedSourceProvenance;
 use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
@@ -146,6 +149,58 @@ final class AdvancedRetrievalTest extends TestCase
         self::assertSame(['before', 'after'], $outcome->diagnostics->neighborChunkIds);
     }
 
+    public function testRetrieverPassesVersionSelectionPolicyToStoreAndDefaultsToActiveBehavior(): void
+    {
+        $space = new EmbeddingSpace('test', 'model', 1);
+        $provider = new class ($space) implements EmbeddingProvider {
+            public function __construct(private EmbeddingSpace $space) {}
+            public function space(): EmbeddingSpace
+            {
+                return $this->space;
+            }
+            public function embed(string $text, string $tenantId): Embedding
+            {
+                return new Embedding([1], $this->space);
+            }
+            public function embedBatch(EmbeddingBatchRequest $request): array
+            {
+                return [];
+            }
+        };
+        $store = new class () implements VectorStore {
+            public ?VectorSearchQuery $lastQuery = null;
+            public function storeBatch(array $chunks): void {}
+            public function search(VectorSearchQuery $query): array
+            {
+                $this->lastQuery = $query;
+                return [];
+            }
+            public function deleteChunk(ChunkDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function deleteDocument(DocumentDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function clearCollection(CollectionDeleteQuery $query): int
+            {
+                return 0;
+            }
+        };
+        $retriever = new Retriever($provider, $store, versionSelectionPolicy: VersionSelectionPolicy::validAt(new \DateTimeImmutable('2026-01-01 00:00:00')));
+        $retriever->retrieve(new Question('Explique.', 'tenant'));
+
+        self::assertNotNull($store->lastQuery);
+        self::assertNotNull($store->lastQuery->versionSelectionPolicy);
+        self::assertSame('valid-at', $store->lastQuery->versionSelectionPolicy->mode);
+        self::assertSame('2026-01-01 00:00:00', $store->lastQuery->versionSelectionPolicy->asOf?->format('Y-m-d H:i:s'));
+
+        $defaultRetriever = new Retriever($provider, $store);
+        $defaultRetriever->retrieve(new Question('Explique.', 'tenant'));
+        self::assertNull($store->lastQuery->versionSelectionPolicy);
+    }
+
     public function testRagDiagnosticsAndCapturedPromptKeepReadableSourceAndOriginalQuestion(): void
     {
         $space = new EmbeddingSpace('test', 'model', 1);
@@ -169,7 +224,15 @@ final class AdvancedRetrievalTest extends TestCase
             public function search(VectorSearchQuery $query): array
             {
                 $code = 'def optimal_bst(p, q, n):' . chr(10) . '    return p';
-                return [new VectorSearchResult(new Chunk('code', 'book', $query->tenantId, $code, 7), .1, 'v1')];
+                return [new VectorSearchResult(
+                    new Chunk('code', 'book', $query->tenantId, $code, 7),
+                    .1,
+                    'v1',
+                    false,
+                    null,
+                    [],
+                    new \Omegaalfa\ContextEngine\Retrieval\VersionedSourceProvenance('v1'),
+                )];
             }
             public function deleteChunk(ChunkDeleteQuery $query): int
             {
@@ -196,12 +259,46 @@ final class AdvancedRetrievalTest extends TestCase
         $question = new Question('Converta optimal_bst para PHP.', 'tenant');
         $execution = $rag->askWithDiagnostics($question);
         self::assertSame('translated', $execution->answer->content);
+        self::assertCount(1, $execution->answer->sourceProvenance);
+        self::assertSame('v1', $execution->answer->sourceProvenance[0]?->documentVersionId);
+        self::assertSame('v1', $execution->diagnostics->sourceProvenance[0]?->documentVersionId);
         self::assertStringContainsString('    return p', $model->messages[1]->content);
         self::assertStringContainsString($question->content, $model->messages[1]->content);
         self::assertStringNotContainsString('base64', strtolower($model->messages[1]->content));
         self::assertSame(['code'], $execution->diagnostics->retrieval->selectedChunkIds);
         self::assertGreaterThan(0, $execution->diagnostics->promptCharacters);
         self::assertArrayHasKey('model', $execution->diagnostics->timingsMilliseconds);
+    }
+
+    public function testPromptBuilderIncludesVersionMetadataInSourceAttributes(): void
+    {
+        $question = new Question('Explique a política de versões.', 'tenant');
+        $builder = new ContextPromptBuilder();
+        $messages = $builder->build($question, [
+            new VectorSearchResult(
+                new Chunk('chunk-1', 'doc-1', 'tenant', 'Conteúdo relevante', 1),
+                .1,
+                'v2',
+                false,
+                null,
+                [],
+                new VersionedSourceProvenance(
+                    'v2',
+                    7,
+                    'ACTIVE',
+                    new DateTimeImmutable('2026-01-01T00:00:00+00:00'),
+                    new DateTimeImmutable('2027-01-01T00:00:00+00:00'),
+                    'v1',
+                ),
+            ),
+        ]);
+
+        $prompt = $messages[1]->content;
+        self::assertStringContainsString('document_version="v2"', $prompt);
+        self::assertStringContainsString('revision="7"', $prompt);
+        self::assertStringContainsString('status="ACTIVE"', $prompt);
+        self::assertStringContainsString('valid_from="2026-01-01T00:00:00+00:00"', $prompt);
+        self::assertStringContainsString('valid_until="2027-01-01T00:00:00+00:00"', $prompt);
     }
 
     public function testNoEvidenceNeverCallsLanguageModelAndStreamingDoesNotSimulateDeltas(): void

@@ -12,6 +12,7 @@ use Omegaalfa\ContextEngine\Contract\NeighborAwareVectorStore;
 use Omegaalfa\ContextEngine\Contract\VersionedVectorStore;
 use Omegaalfa\ContextEngine\Embedding\EmbeddedChunk;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
+use Omegaalfa\ContextEngine\Exception\IncompatibleVectorStoreSchemaException;
 use Omegaalfa\ContextEngine\Exception\InvalidEmbeddingException;
 use Omegaalfa\ContextEngine\Ingestion\DocumentVersion;
 use Omegaalfa\ContextEngine\Ingestion\IngestionState;
@@ -19,6 +20,8 @@ use Omegaalfa\ContextEngine\Retrieval\NeighborSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\VectorMetric as ContextVectorMetric;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
+use Omegaalfa\ContextEngine\Retrieval\VersionedSourceProvenance;
+use Omegaalfa\ContextEngine\Retrieval\VersionSelectionPolicy;
 use Omegaalfa\QueryBuilder\Enums\OrderDirection;
 use Omegaalfa\QueryBuilder\Enums\SqlOperator;
 use Omegaalfa\QueryBuilder\Exceptions\DatabaseException;
@@ -27,6 +30,8 @@ use Omegaalfa\QueryBuilder\Exceptions\UnsupportedDatabaseFeatureException;
 use Omegaalfa\QueryBuilder\PostgreSQL\PgVector\Vector;
 use Omegaalfa\QueryBuilder\PostgreSQL\PgVector\VectorMetric;
 use Omegaalfa\QueryBuilder\QueryBuilder;
+use Omegaalfa\QueryBuilder\QueryBuilderOperations;
+use Throwable;
 
 final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwareVectorStore
 {
@@ -74,7 +79,7 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
                 throw new InvalidArgumentException('A batch cannot mix tenants or collections.');
             }
             $directVersion = hash('sha256', implode("\0", [$chunk->tenantId, $chunk->collection, $chunk->documentId, $item->embedding->space->fingerprint(), 'direct-store']));
-            $rows[] = [$this->schema->chunkId => $chunk->id, $this->schema->documentId => $chunk->documentId, $this->schema->documentVersion => $directVersion, $this->schema->ingestionState => IngestionState::ACTIVE->value, $this->schema->tenantId => $chunk->tenantId, $this->schema->collection => $chunk->collection, $this->schema->status => $chunk->status, $this->schema->content => $chunk->content, $this->schema->position => $chunk->position, $this->schema->metadata => json_encode($chunk->metadata, JSON_THROW_ON_ERROR), $this->schema->embedding => new Vector($item->embedding->values, $item->embedding->dimensions()), $this->schema->embeddingProvider => $item->embedding->space->provider, $this->schema->embeddingModel => $item->embedding->space->model, $this->schema->embeddingDimensions => $item->embedding->space->dimensions, $this->schema->embeddingRevision => $item->embedding->space->revision, $this->schema->embeddingFingerprint => $item->embedding->space->fingerprint()];
+            $rows[] = [$this->schema->chunkId => $chunk->id, $this->schema->documentId => $chunk->documentId, $this->schema->documentVersion => $directVersion, $this->schema->ingestionState => IngestionState::ACTIVE->value, $this->schema->tenantId => $chunk->tenantId, $this->schema->collection => $chunk->collection, $this->schema->status => $chunk->status, $this->schema->content => $chunk->content, $this->schema->position => $chunk->position, $this->schema->metadata => json_encode($chunk->metadata, JSON_THROW_ON_ERROR), $this->schema->embedding => new Vector($item->embedding->values, $item->embedding->dimensions()), $this->schema->embeddingProvider => $item->embedding->space->provider, $this->schema->embeddingModel => $item->embedding->space->model, $this->schema->embeddingDimensions => $item->embedding->space->dimensions, $this->schema->embeddingRevision => $item->embedding->space->revision, $this->schema->embeddingFingerprint => $item->embedding->space->fingerprint(), $this->schema->documentVersionIdentity => $chunk->documentId . ':' . $directVersion, $this->schema->versionStatus => 'active', $this->schema->versionRevision => 1, $this->schema->validFrom => null, $this->schema->validUntil => null, $this->schema->supersedesVersionId => null];
         }
         $this->query->insertBatch($this->schema->table, $rows)->onConflict([$this->schema->tenantId, $this->schema->collection, $this->schema->chunkId, $this->schema->embeddingFingerprint, $this->schema->documentVersion])->doUpdate([$this->schema->content, $this->schema->metadata, $this->schema->status, $this->schema->embedding]);
         $this->query->execute();
@@ -139,7 +144,7 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
     public function search(VectorSearchQuery $query): array
     {
         $space = $query->embedding->space;
-        $fields = [$this->schema->chunkId, $this->schema->documentId, $this->schema->documentVersion, $this->schema->tenantId, $this->schema->collection, $this->schema->status, $this->schema->content, $this->schema->position, $this->schema->metadata];
+        $fields = [$this->schema->chunkId, $this->schema->documentId, $this->schema->documentVersion, $this->schema->tenantId, $this->schema->collection, $this->schema->status, $this->schema->content, $this->schema->position, $this->schema->metadata, $this->schema->versionStatus, $this->schema->versionRevision, $this->schema->validFrom, $this->schema->validUntil, $this->schema->supersedesVersionId];
         $metric = match ($query->policy->metric) {
             ContextVectorMetric::L2 => VectorMetric::L2,
             ContextVectorMetric::INNER_PRODUCT => VectorMetric::INNER_PRODUCT,
@@ -147,11 +152,19 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
             ContextVectorMetric::L1 => VectorMetric::L1,
         };
         $operation = $this->query->select($this->schema->table, $fields)->nearestNeighbors($this->schema->embedding, new Vector($query->embedding->values), $metric, 'distance', $space->dimensions)->where($this->schema->tenantId, SqlOperator::EQUALS, $query->tenantId)->where($this->schema->status, SqlOperator::EQUALS, $query->status)->where($this->schema->ingestionState, SqlOperator::EQUALS, IngestionState::ACTIVE->value)->where($this->schema->embeddingProvider, SqlOperator::EQUALS, $space->provider)->where($this->schema->embeddingModel, SqlOperator::EQUALS, $space->model)->where($this->schema->embeddingDimensions, SqlOperator::EQUALS, $space->dimensions)->where($this->schema->embeddingRevision, SqlOperator::EQUALS, $space->revision)->where($this->schema->embeddingFingerprint, SqlOperator::EQUALS, $space->fingerprint());
+        $this->applyVersionSelection($operation, $query->versionSelectionPolicy);
         if ($query->collection !== null) {
             $operation->where($this->schema->collection, SqlOperator::EQUALS, $query->collection);
         }
         $operation->limit($query->policy->limit);
-        $result = $this->query->execute(false);
+        try {
+            $result = $this->query->execute(false);
+        } catch (Throwable $exception) {
+            if ($this->isSchemaCompatibilityFailure($exception)) {
+                throw new IncompatibleVectorStoreSchemaException($this->missingColumnsFromException($exception), $exception);
+            }
+            throw $exception;
+        }
         $found = [];
         foreach ($result->data as $row) {
             $distance = (float)$row['distance'];
@@ -168,7 +181,15 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
                 }
             }
             $chunk = new Chunk((string)$row[$this->schema->chunkId], (string)$row[$this->schema->documentId], (string)$row[$this->schema->tenantId], (string)$row[$this->schema->content], (int)$row[$this->schema->position], $metadata, (string)$row[$this->schema->collection], (string)$row[$this->schema->status]);
-            $found[] = new VectorSearchResult($chunk, $distance, (string)$row[$this->schema->documentVersion]);
+            $found[] = new VectorSearchResult(
+                $chunk,
+                $distance,
+                (string)$row[$this->schema->documentVersion],
+                false,
+                null,
+                [],
+                $this->provenanceFromRow($row),
+            );
         }
         return $found;
     }
@@ -200,7 +221,14 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
             ->orderBy($this->schema->position, OrderDirection::ASC)
             ->limit($query->before + $query->after + 1);
         $this->applySpace($operation, $query->space);
-        $result = $operation->execute(false);
+        try {
+            $result = $operation->execute(false);
+        } catch (Throwable $exception) {
+            if ($this->isSchemaCompatibilityFailure($exception)) {
+                throw new IncompatibleVectorStoreSchemaException($this->missingColumnsFromException($exception), $exception);
+            }
+            throw $exception;
+        }
         $neighbors = [];
         foreach ($result->data as $row) {
             $decoded = json_decode((string)$row[$this->schema->metadata], true, flags: JSON_THROW_ON_ERROR);
@@ -287,7 +315,7 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
      * @return void
      * @throws QueryException
      */
-    private function applySpace(QueryBuilder $operation, EmbeddingSpace $space): void
+    private function applySpace(QueryBuilderOperations $operation, EmbeddingSpace $space): void
     {
         $operation
             ->where($this->schema->embeddingProvider, SqlOperator::EQUALS, $space->provider)
@@ -295,6 +323,97 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
             ->where($this->schema->embeddingDimensions, SqlOperator::EQUALS, $space->dimensions)
             ->where($this->schema->embeddingRevision, SqlOperator::EQUALS, $space->revision)
             ->where($this->schema->embeddingFingerprint, SqlOperator::EQUALS, $space->fingerprint());
+    }
+
+    private function isSchemaCompatibilityFailure(Throwable $exception): bool
+    {
+        $message = $exception->getMessage();
+        return str_contains($message, 'column')
+            || str_contains($message, 'does not exist')
+            || str_contains($message, 'relation');
+    }
+
+    /** @return list<string> */
+    private function missingColumnsFromException(Throwable $exception): array
+    {
+        $message = $exception->getMessage();
+        if (!str_contains($message, 'column')) {
+            return [];
+        }
+
+        $matches = [];
+        preg_match('/"([a-z0-9_]+)"\s+does not exist/i', $message, $matches);
+        if ($matches === []) {
+            return [];
+        }
+
+        return [$matches[1]];
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function provenanceFromRow(array $row): ?VersionedSourceProvenance
+    {
+        $documentVersionId = isset($row[$this->schema->documentVersion]) && is_scalar($row[$this->schema->documentVersion]) ? (string) $row[$this->schema->documentVersion] : null;
+        if ($documentVersionId === null || trim($documentVersionId) === '') {
+            return null;
+        }
+
+        $validFrom = null;
+        if (isset($row[$this->schema->validFrom]) && is_string($row[$this->schema->validFrom]) && trim($row[$this->schema->validFrom]) !== '') {
+            $validFrom = new \DateTimeImmutable($row[$this->schema->validFrom]);
+        }
+
+        $validUntil = null;
+        if (isset($row[$this->schema->validUntil]) && is_string($row[$this->schema->validUntil]) && trim($row[$this->schema->validUntil]) !== '') {
+            $validUntil = new \DateTimeImmutable($row[$this->schema->validUntil]);
+        }
+
+        $revision = null;
+        if (isset($row[$this->schema->versionRevision]) && is_scalar($row[$this->schema->versionRevision])) {
+            $revision = (int) $row[$this->schema->versionRevision];
+        }
+
+        $status = null;
+        if (isset($row[$this->schema->versionStatus]) && is_string($row[$this->schema->versionStatus]) && trim($row[$this->schema->versionStatus]) !== '') {
+            $status = $row[$this->schema->versionStatus];
+        }
+
+        $supersedesVersionId = null;
+        if (isset($row[$this->schema->supersedesVersionId]) && is_string($row[$this->schema->supersedesVersionId]) && trim($row[$this->schema->supersedesVersionId]) !== '') {
+            $supersedesVersionId = $row[$this->schema->supersedesVersionId];
+        }
+
+        return new VersionedSourceProvenance(
+            $documentVersionId,
+            $revision,
+            $status,
+            $validFrom,
+            $validUntil,
+            $supersedesVersionId,
+        );
+    }
+
+    private function applyVersionSelection(QueryBuilderOperations $operation, ?VersionSelectionPolicy $policy): void
+    {
+        if ($policy === null) {
+            return;
+        }
+
+        if ($policy->mode === 'active') {
+            return;
+        }
+
+        if ($policy->mode === 'all-versions') {
+            return;
+        }
+
+        if ($policy->mode === 'valid-at' && $policy->asOf !== null) {
+            $asOf = $policy->asOf->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
+            $operation->where($this->schema->validFrom, SqlOperator::LESS_THAN_OR_EQUALS, $asOf);
+            $operation->where($this->schema->validUntil, SqlOperator::GREATER_THAN, $asOf);
+        }
     }
 
     /**
@@ -309,7 +428,7 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
                 throw new InvalidArgumentException('Staged chunks must match the document version scope.');
             }
             $chunk = $item->chunk;
-            $rows[] = [$this->schema->chunkId => $chunk->id, $this->schema->documentId => $chunk->documentId, $this->schema->documentVersion => $version->id, $this->schema->ingestionState => IngestionState::STAGED->value, $this->schema->tenantId => $chunk->tenantId, $this->schema->collection => $chunk->collection, $this->schema->status => $chunk->status, $this->schema->content => $chunk->content, $this->schema->position => $chunk->position, $this->schema->metadata => json_encode($chunk->metadata, JSON_THROW_ON_ERROR), $this->schema->embedding => new Vector($item->embedding->values, $item->embedding->dimensions()), $this->schema->embeddingProvider => $item->embedding->space->provider, $this->schema->embeddingModel => $item->embedding->space->model, $this->schema->embeddingDimensions => $item->embedding->space->dimensions, $this->schema->embeddingRevision => $item->embedding->space->revision, $this->schema->embeddingFingerprint => $item->embedding->space->fingerprint()];
+            $rows[] = [$this->schema->chunkId => $chunk->id, $this->schema->documentId => $chunk->documentId, $this->schema->documentVersion => $version->id, $this->schema->ingestionState => IngestionState::STAGED->value, $this->schema->tenantId => $chunk->tenantId, $this->schema->collection => $chunk->collection, $this->schema->status => $chunk->status, $this->schema->content => $chunk->content, $this->schema->position => $chunk->position, $this->schema->metadata => json_encode($chunk->metadata, JSON_THROW_ON_ERROR), $this->schema->embedding => new Vector($item->embedding->values, $item->embedding->dimensions()), $this->schema->embeddingProvider => $item->embedding->space->provider, $this->schema->embeddingModel => $item->embedding->space->model, $this->schema->embeddingDimensions => $item->embedding->space->dimensions, $this->schema->embeddingRevision => $item->embedding->space->revision, $this->schema->embeddingFingerprint => $item->embedding->space->fingerprint(), $this->schema->documentVersionIdentity => $version->identity->documentId . ':' . $version->identity->versionId, $this->schema->versionStatus => $version->status->value, $this->schema->versionRevision => $version->revision, $this->schema->validFrom => $version->validFrom?->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s.u'), $this->schema->validUntil => $version->validUntil?->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s.u'), $this->schema->supersedesVersionId => $version->supersedesVersionId];
         }
         return $rows;
     }

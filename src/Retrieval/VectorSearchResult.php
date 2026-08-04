@@ -17,6 +17,7 @@ final readonly class VectorSearchResult
         public bool $neighbor = false,
         public ?float $fusionScore = null,
         public array $matches = [],
+        public ?VersionedSourceProvenance $provenance = null,
     ) {
         if (!is_finite($distance) || $distance < 0) {
             throw new InvalidArgumentException('Vector distance must be finite and non-negative.');

@@ -63,7 +63,24 @@ public function activateVersion(DocumentVersion $version): void;
 public function failVersion(DocumentVersion $version): void;
 ```
 
-`DocumentVersion` é imutável e determinística. `activateVersion()` deve trocar versões atomicamente; `stageBatch()` nunca pode tornar uma versão incompleta pesquisável.
+`DocumentVersion` é imutável e determinística. Ele agora pode carregar status documental, revisão, vigência temporal e supersessão. `activateVersion()` deve trocar versões atomicamente; `stageBatch()` nunca pode tornar uma versão incompleta pesquisável.
+
+### `DocumentVersion` e `DocumentVersionStatus`
+
+```php
+$version = new DocumentVersion(
+    document: $document,
+    space: $space,
+    chunkingFingerprint: 'splitter-a',
+    status: DocumentVersionStatus::ACTIVE,
+    validFrom: new DateTimeImmutable('2026-01-01 00:00:00', new DateTimeZone('UTC')),
+    validUntil: new DateTimeImmutable('2026-02-01 00:00:00', new DateTimeZone('UTC')),
+    revision: 3,
+    supersedesVersionId: 'prev-version',
+);
+```
+
+O método `isValidAt()` indica se a versão está vigente em um instante específico. Essa capacidade é a base para o retrieval temporal e para auditoria futura.
 
 ### Modelos de linguagem
 
@@ -160,11 +177,21 @@ O limite é positivo e a distância máxima, quando presente, é finita e não n
 
 ### Consulta e resultado
 
-`VectorSearchQuery` reúne tenant obrigatório, embedding, política, collection opcional e status. `VectorSearchResult` contém `Chunk $chunk` e distância finita; nenhum ID físico é exposto.
+`VectorSearchQuery` reúne tenant obrigatório, embedding, política, collection opcional e status. `VectorSearchResult` contém `Chunk $chunk`, distância finita e, opcionalmente, uma `VersionedSourceProvenance` com `documentVersionId`, revisão, status, vigência temporal e supersessão. Essa proveniência é propagada ao `ContextPromptBuilder` através de atributos `document_version`, `revision`, `status`, `valid_from` e `valid_until` nas fontes do prompt.
 
 ### `Retriever`
 
-`retrieve(Question $question): array` gera o embedding no tenant da pergunta e consulta o store com os filtros configurados.
+`retrieve(Question $question): array` gera o embedding no tenant da pergunta e consulta o store com os filtros configurados. O construtor aceita uma política opcional de seleção de versões:
+
+```php
+$newRetriever = new Retriever(
+    embeddings: $provider,
+    store: $store,
+    versionSelectionPolicy: VersionSelectionPolicy::validAt(new DateTimeImmutable('2026-01-01 00:00:00')),
+);
+```
+
+Quando nenhuma política for fornecida, o comportamento permanece igual e usa a seleção padrão de versões ativas.
 
 ### Objetos RAG
 

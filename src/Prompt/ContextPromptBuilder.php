@@ -86,12 +86,23 @@ final readonly class ContextPromptBuilder
             $content = $this->escapeDelimiters($result->chunk->content);
             $origin = $result->neighbor ? 'neighbor' : 'ranked-hit';
             $position = $result->chunk->position;
+            $provenance = $result->provenance;
+            $version = $provenance !== null ? $this->escapeAttribute($provenance->documentVersionId) : '';
+            $revision = $provenance !== null && $provenance->revision !== null ? (string) $provenance->revision : '';
+            $status = $provenance !== null && $provenance->status !== null ? $this->escapeAttribute($provenance->status) : '';
+            $validFrom = $provenance !== null && $provenance->validFrom !== null ? $provenance->validFrom->format(DATE_ATOM) : '';
+            $validUntil = $provenance !== null && $provenance->validUntil !== null ? $provenance->validUntil->format(DATE_ATOM) : '';
             $quote = chr(34);
             $sources[] = '<SOURCE rank=' . $quote . $rank . $quote
                 . ' origin=' . $quote . $origin . $quote
                 . ' position=' . $quote . $position . $quote
                 . ' chunk_id=' . $quote . $chunkId . $quote
-                . ' document_id=' . $quote . $documentId . $quote . '>'
+                . ' document_id=' . $quote . $documentId . $quote
+                . ' document_version=' . $quote . $version . $quote
+                . ' revision=' . $quote . $revision . $quote
+                . ' status=' . $quote . $status . $quote
+                . ' valid_from=' . $quote . $validFrom . $quote
+                . ' valid_until=' . $quote . $validUntil . $quote . '>'
                 . chr(10) . $content . chr(10) . '</SOURCE>';
         }
 

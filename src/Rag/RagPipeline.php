@@ -13,6 +13,8 @@ use Omegaalfa\ContextEngine\Exception\InsufficientContextException;
 use Omegaalfa\ContextEngine\Exception\StreamingNotSupportedException;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
+use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
+use Omegaalfa\ContextEngine\Retrieval\VersionedSourceProvenance;
 
 final readonly class RagPipeline
 {
@@ -51,7 +53,7 @@ final readonly class RagPipeline
         $retrieval = $this->retriever->retrieveWithDiagnostics($question);
         if ($retrieval->results === []) {
             return new RagExecution(
-                new Answer($this->noEvidencePolicy->response($question), []),
+                new Answer($this->noEvidencePolicy->response($question), [], []),
                 new RagDiagnostics(
                     $retrieval->diagnostics,
                     0,
@@ -61,6 +63,7 @@ final readonly class RagPipeline
                         'model' => 0.0,
                         'total' => self::elapsed($totalStarted),
                     ],
+                    [],
                 ),
             );
         }
@@ -70,7 +73,11 @@ final readonly class RagPipeline
         $modelStarted = hrtime(true);
         $content = $this->model->complete($messages);
         $modelTime = self::elapsed($modelStarted);
-        $answer = new Answer($content, $retrieval->results);
+        $sourceProvenance = array_map(
+            static fn (VectorSearchResult $result): ?VersionedSourceProvenance => $result->provenance,
+            $retrieval->results,
+        );
+        $answer = new Answer($content, $retrieval->results, $sourceProvenance);
         $promptCharacters = array_sum(array_map(
             static fn ($message): int => mb_strlen($message->content),
             $messages,
@@ -84,6 +91,7 @@ final readonly class RagPipeline
                 'model' => $modelTime,
                 'total' => self::elapsed($totalStarted),
             ],
+            $sourceProvenance,
         ));
     }
 

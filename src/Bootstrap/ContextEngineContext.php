@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Bootstrap;
 
+use InvalidArgumentException;
+use Omegaalfa\ContextEngine\Contract\DocumentLoader;
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
+use Omegaalfa\ContextEngine\Ingestion\IngestionReport;
+use Omegaalfa\ContextEngine\Rag\Answer;
+use Omegaalfa\ContextEngine\Rag\Question;
+use Omegaalfa\ContextEngine\Rag\RagExecution;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
+use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
 
 final readonly class ContextEngineContext
 {
@@ -26,4 +33,44 @@ final readonly class ContextEngineContext
         public EmbeddingProvider $embeddings,
         public VectorStore       $store,
     ) {}
+
+    public function ingest(DocumentLoader $loader): IngestionReport
+    {
+        return $this->ingestion->ingest($loader);
+    }
+
+    /** @return list<VectorSearchResult> */
+    public function search(Question|string $question, ?string $tenantId = null): array
+    {
+        return $this->retriever->retrieve($this->question($question, $tenantId));
+    }
+
+    public function ask(Question|string $question, ?string $tenantId = null): Answer
+    {
+        return $this->rag->ask($question, $tenantId);
+    }
+
+    /** @return list<VectorSearchResult> */
+    public function searchWithDiagnostics(Question|string $question, ?string $tenantId = null): array
+    {
+        return $this->retriever->retrieveWithDiagnostics($this->question($question, $tenantId))->results;
+    }
+
+    public function askWithDiagnostics(Question|string $question, ?string $tenantId = null): RagExecution
+    {
+        return $this->rag->askWithDiagnostics($question, $tenantId);
+    }
+
+    private function question(Question|string $question, ?string $tenantId): Question
+    {
+        if ($question instanceof Question) {
+            return $question;
+        }
+
+        if ($tenantId === null) {
+            throw new InvalidArgumentException('tenantId is required when question is a string.');
+        }
+
+        return new Question($question, $tenantId);
+    }
 }

@@ -17,6 +17,12 @@ CREATE TABLE IF NOT EXISTS context_chunks (
     embedding_dimensions integer NOT NULL CHECK (embedding_dimensions = 1024),
     embedding_revision text NOT NULL CHECK (embedding_revision <> ''),
     embedding_space_fingerprint text NOT NULL CHECK (embedding_space_fingerprint <> ''),
+    document_version_identity text,
+    version_status text,
+    version_revision integer,
+    valid_from timestamp with time zone,
+    valid_until timestamp with time zone,
+    supersedes_version_id text,
     CONSTRAINT context_chunks_identity PRIMARY KEY (
         tenant_id,
         collection,

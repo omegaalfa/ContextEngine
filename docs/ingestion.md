@@ -42,7 +42,7 @@ $report = $ingestion->ingest(
 );
 ```
 
-O pipeline nunca materializa todos os chunks: o `Batcher` produz listas não vazias, inclusive o último lote incompleto. Cada resultado deve ter a mesma cardinalidade e ordem do request e pertencer ao espaço declarado pelo provider. Persistência ocorre serialmente depois da validação e fora das chamadas HTTP. Cada `stageBatch()` é atômico e invisível à busca; depois do último lote, `activateVersion()` troca a versão pesquisável em uma transação curta.
+O pipeline nunca materializa todos os chunks: o `Batcher` produz listas não vazias, inclusive o último lote incompleto. Cada resultado deve ter a mesma cardinalidade e ordem do request e pertencer ao espaço declarado pelo provider. Antes de persistir ou ativar uma versão, a pipeline aplica `VersionValidator` para rejeitar janelas temporais inválidas ou conflitos de versão. Persistência ocorre serialmente depois da validação e fora das chamadas HTTP. Cada `stageBatch()` é atômico e invisível à busca; depois do último lote, `activateVersion()` troca a versão pesquisável em uma transação curta.
 
 No exemplo, `$batchExecutor` foi composto no bootstrap. Se `$embeddingProvider` usa `AsyncHttpClient`, crie um único `FiberEventLoop` e injete-o tanto no cliente quanto no `FiberBatchEmbeddingExecutor`. Consulte [Concorrência e backpressure](concurrency.md).
 

@@ -53,6 +53,7 @@ final readonly class ReciprocalRankFusion
                 false,
                 $item['score'],
                 $item['matches'],
+                $result->provenance,
             );
         }
         return $fused;

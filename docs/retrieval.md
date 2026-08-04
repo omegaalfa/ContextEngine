@@ -7,7 +7,7 @@
 - `RetrievalPolicy(int $limit = 5, VectorMetric $metric = COSINE, ?float $maximumDistance = null)`: limit 1–100; distância máxima não negativa.
 - `VectorMetric`: `L2`, `INNER_PRODUCT`, `COSINE`, `L1`.
 - `VectorSearchQuery(string $tenantId, Embedding $embedding, RetrievalPolicy $policy = new RetrievalPolicy(), ?string $collection = null, string $status = 'active')`.
-- `VectorSearchResult(Chunk $chunk, float $distance)`: distância finita e não negativa.
+- `VectorSearchResult(Chunk $chunk, float $distance, ?string $documentVersion = null, bool $neighbor = false, ?float $fusionScore = null, array $matches = [], ?VersionedSourceProvenance $provenance = null)`: distância finita e não negativa, com metadata opcional de versão documental para auditoria e prompt.
 - `Retriever(EmbeddingProvider $embeddings, VectorStore $store, RetrievalPolicy $policy = ..., ?string $collection = null, string $status = 'active')`.
 
 ```php

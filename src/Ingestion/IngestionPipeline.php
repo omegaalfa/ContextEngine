@@ -35,6 +35,7 @@ final readonly class IngestionPipeline
         private BatchEmbeddingExecutor $executor,
         private int                    $batchSize = 32,
         private Batcher                $batcher = new Batcher(),
+        private ?VersionValidator      $validator = null,
     ) {
         if ($batchSize < 1) {
             throw new InvalidArgumentException('Batch size must be greater than zero.');
@@ -66,6 +67,8 @@ final readonly class IngestionPipeline
             foreach ($loader->load() as $document) {
                 $currentDocument = $document->id;
                 $currentVersion = new DocumentVersion($document, $this->embeddings->space(), $this->splitter->fingerprint());
+                $validator = $this->validator ?? new VersionValidator();
+                $validator->validate($currentVersion, []);
                 $this->store->beginVersion($currentVersion);
                 $currentProgress = BatchExecutionProgress::empty();
                 $documentPersistedBatches = 0;
@@ -137,6 +140,7 @@ final readonly class IngestionPipeline
                 if ($documentPersistedChunks === 0) {
                     throw new LogicException('A document version cannot be activated without chunks.');
                 }
+                $validator->validate($currentVersion, []);
                 $this->store->activateVersion($currentVersion);
                 $documentsActivated++;
                 $currentVersion = null;

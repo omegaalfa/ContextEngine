@@ -1,0 +1,390 @@
+ContextEngine v2 — Version-Aware Knowledge Engine
+Objetivo
+
+Evoluir o ContextEngine para uma engine de conhecimento orientada a documentos versionados.
+
+O objetivo não é competir por quantidade de integrações com LangChain ou LlamaIndex, mas oferecer um mecanismo extremamente robusto para aplicações PHP que trabalham com documentação corporativa, políticas, manuais, contratos e bases de conhecimento que evoluem ao longo do tempo.
+
+O foco desta etapa é tornar o retrieval consciente de versões documentais, validade temporal, auditoria e evolução do conhecimento.
+
+Estado atual
+
+O ContextEngine já possui uma base arquitetural sólida composta por:
+
+pipeline de retrieval em múltiplas etapas;
+QueryRewriter;
+Reciprocal Rank Fusion;
+expansão de vizinhos;
+orçamento de contexto;
+protocolo de prompt v3;
+diagnóstico detalhado;
+isolamento por tenant;
+collection;
+documentVersion;
+embedding space;
+ativação de documentos.
+
+Essa infraestrutura será utilizada como fundação.
+
+Não reimplementar componentes existentes.
+
+Objetivos da v2
+
+A implementação deverá introduzir cinco grandes capacidades:
+
+Version-aware retrieval
+
+↓
+
+Temporal retrieval
+
+↓
+
+Knowledge evolution
+
+↓
+
+Incremental ingestion
+
+↓
+
+Evaluation
+
+Cada capacidade deve permanecer desacoplada das demais.
+
+Patch A — Version-aware Retrieval
+Objetivo
+
+Permitir recuperar conhecimento considerando versões documentais.
+
+Hoje o retrieval utiliza apenas documentos ativos.
+
+A nova implementação deverá permitir selecionar explicitamente quais versões podem participar da busca.
+
+Exemplo:
+
+versão ativa
+
+ou
+
+versão válida em determinada data
+
+ou
+
+todas as versões
+Criar
+VersionSelectionPolicy
+
+Exemplo:
+
+VersionSelectionPolicy::active()
+
+VersionSelectionPolicy::validAt($date)
+
+VersionSelectionPolicy::allVersions()
+
+O Retriever deverá aceitar essa política sem quebrar compatibilidade.
+
+Caso nenhuma política seja informada:
+
+ACTIVE
+
+deverá continuar sendo utilizada.
+
+Filtragem
+
+A filtragem deverá ocorrer durante o retrieval.
+
+Jamais recuperar versões inválidas para descartá-las posteriormente.
+
+Patch B — Ciclo de vida documental
+
+Criar um enum:
+
+DocumentVersionStatus
+
+Inicialmente contendo:
+
+DRAFT
+
+STAGED
+
+ACTIVE
+
+SUPERSEDED
+
+ARCHIVED
+
+Cada versão deverá possuir:
+
+revision
+
+createdAt
+
+validFrom
+
+validUntil
+
+supersedesVersionId
+Patch C — Proveniência completa
+
+Expandir a proveniência retornada pelo retrieval.
+
+Cada chunk deverá expor:
+
+tenant
+
+collection
+
+documentId
+
+documentVersion
+
+revision
+
+status
+
+validFrom
+
+validUntil
+
+chunkId
+
+position
+
+page (quando existir)
+
+section (quando existir)
+
+O objetivo é permitir auditoria completa.
+
+Patch D — Version Conflict Detection
+
+Criar um componente:
+
+VersionConflictDetector
+
+Responsável por identificar quando duas versões do mesmo trecho aparecem simultaneamente.
+
+Exemplo:
+
+versão 2
+
+Prazo: 30 dias
+
+versão 3
+
+Prazo: 45 dias
+
+O detector deverá produzir um relatório estruturado.
+
+Não utilizar LLM.
+
+Patch E — Document Version Diff
+
+Criar:
+
+DocumentVersionDiffer
+
+Objetivo:
+
+comparar duas versões do mesmo documento.
+
+Resultado esperado:
+
+trechos adicionados
+
+trechos removidos
+
+trechos modificados
+
+trechos preservados
+
+Criar:
+
+ChunkChangeType
+
+ADDED
+
+REMOVED
+
+MODIFIED
+
+UNCHANGED
+
+MOVED
+Patch F — Logical Chunk Identity
+
+Não utilizar apenas chunkId.
+
+Criar um mecanismo de identidade lógica.
+
+A associação entre versões deverá considerar:
+
+documento
+seção
+heading
+posição
+página
+similaridade textual
+hash normalizado
+
+Esse mecanismo será utilizado pelo DocumentVersionDiffer.
+
+Patch G — Incremental Ingestion
+
+Hoje uma nova versão gera embeddings novamente.
+
+Implementar reutilização de embeddings quando possível.
+
+Um embedding somente poderá ser reutilizado se forem iguais:
+
+conteúdo normalizado
+embedding provider
+embedding model
+dimensions
+splitter
+embedding space
+
+Caso qualquer item seja diferente:
+
+novo embedding.
+
+Ao final da ingestão gerar relatório contendo:
+
+chunks reutilizados
+
+chunks reembeddados
+
+chunks adicionados
+
+chunks removidos
+
+economia estimada
+Patch H — Rollback
+
+Criar API para ativação de versões anteriores.
+
+Exemplo:
+
+$documents->rollback(
+    tenantId: "...",
+    documentId: "...",
+    revision: 3,
+);
+
+A operação deverá ser transacional.
+
+Patch I — Prompt temporal
+
+Atualizar o PromptBuilder.
+
+Quando existir política temporal:
+
+o prompt deverá informar explicitamente ao modelo:
+
+utilize apenas versões válidas
+
+não misture versões
+
+quando houver mudança entre versões informe explicitamente
+
+cite sempre a versão documental utilizada
+Patch J — Evaluation Framework
+
+Criar um pequeno framework de avaliação do retrieval.
+
+Não utilizar LLM.
+
+Criar:
+
+EvaluationDataset
+
+EvaluationCase
+
+EvaluationRunner
+
+EvaluationReport
+
+Cada caso deverá permitir definir:
+
+pergunta
+
+documentos esperados
+
+versões esperadas
+
+chunks esperados
+
+Gerar métricas como:
+
+Recall@1
+
+Recall@5
+
+MRR
+
+Average Retrieval Time
+
+Average Context Size
+
+Version Accuracy
+
+Stale Version Rate
+Fora do escopo
+
+Continuam fora desta etapa:
+
+BM25
+Hybrid Search
+Cross Encoder
+LLM Reranker
+OCR
+GraphRAG
+Agentic RAG
+Memory
+Tool Calling
+Multimodalidade
+Novos providers
+Novos vector stores
+Compatibilidade
+
+Nenhuma API existente poderá ser quebrada.
+
+Os novos componentes deverão ser opcionais.
+
+O comportamento atual deverá permanecer exatamente igual quando nenhuma política temporal for utilizada.
+
+Testes
+
+Adicionar cobertura para:
+
+retrieval por versão ativa
+retrieval por data
+rollback
+conflito entre versões
+comparação entre versões
+reutilização de embeddings
+proveniência
+métricas de avaliação
+compatibilidade com APIs atuais
+
+Todos os testes existentes devem continuar passando.
+
+Documentação
+
+Atualizar a documentação adicionando:
+
+Arquitetura do Version-aware Retrieval
+Ciclo de vida documental
+Incremental Ingestion
+Version Diff
+Temporal Retrieval
+Evaluation Framework
+Exemplos completos de uso
+Diagramas da arquitetura
+Objetivo arquitetural
+
+Ao final desta etapa, o ContextEngine deverá deixar de ser apenas uma biblioteca de RAG baseada em vetores e passar a oferecer um mecanismo de conhecimento corporativo versionado, auditável e temporalmente consistente.
+
+O foco não é competir pelo maior número de integrações, mas oferecer uma engine extremamente robusta para aplicações PHP que trabalham com documentos vivos, sujeitos a revisões, substituições e evolução contínua.

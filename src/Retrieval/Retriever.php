@@ -28,6 +28,7 @@ final readonly class Retriever
         private ?int $maximumContextCharacters = null,
         ?ReciprocalRankFusion $fusion = null,
         private ?ContextRelevancePolicy $contextRelevancePolicy = null,
+        private ?VersionSelectionPolicy $versionSelectionPolicy = null,
     ) {
         $this->queryRewriter = $queryRewriter ?? new IdentityQueryRewriter();
         $this->neighborExpansion = $neighborExpansion ?? new NeighborExpansion();
@@ -56,6 +57,7 @@ final readonly class Retriever
                 $this->policy,
                 $this->collection,
                 $this->status,
+                $this->versionSelectionPolicy,
             ));
             $hits[$query] = count($rankings[$query]);
             $resultsByQuery[$query] = array_map(
@@ -183,6 +185,7 @@ final readonly class Retriever
                         true,
                         $hit->fusionScore,
                         $hit->matches,
+                        $hit->provenance,
                     );
                     $neighborIds[] = $neighbor->id;
                 }

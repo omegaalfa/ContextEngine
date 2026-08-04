@@ -133,7 +133,9 @@ Contém implementações técnicas que não pertencem ao domínio. Hoje abriga `
 
 ### `Ingestion`
 
-Contém `IngestionPipeline`, `DocumentVersion`, `IngestionState`, `IngestionReport`, `BatchEmbeddingResult` e `BatchWindowException`. É a camada de aplicação que coordena loader, splitter, batching, executor, provider e store. Depende somente das portas e objetos necessários ao caso de uso. Nunca deve conhecer HTTP, Redis, SQL, PDO ou estruturas internas de um provider.
+Contém `IngestionPipeline`, `DocumentVersion`, `DocumentVersionStatus`, `IngestionState`, `IngestionReport`, `BatchEmbeddingResult` e `BatchWindowException`. É a camada de aplicação que coordena loader, splitter, batching, executor, provider e store. Depende somente das portas e objetos necessários ao caso de uso. Nunca deve conhecer HTTP, Redis, SQL, PDO ou estruturas internas de um provider.
+
+`DocumentVersion` agora representa um ciclo de vida documental explícito: status (`draft`, `staged`, `active`, `superseded`, `archived`), revisão, vigência temporal e supersessão. Essa camada é a base para a v2 de retrieval temporal e auditoria.
 
 ### `Loader`
 

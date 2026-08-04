@@ -4,7 +4,7 @@
 |---|---|
 | Adaptive context | [Sele��o adaptativa](adaptive-context-selection.md) |
 | 🚀 Começar | [Primeiros passos — guia completo](getting-started.md) · [Instalação](installation.md) |
-| 🧭 Design | [Arquitetura](architecture.md) · [Conceitos](core-concepts.md) · [API](api-reference.md) |
+| 🧭 Design | [Arquitetura](architecture.md) · [Conceitos](core-concepts.md) · [API](api-reference.md) · [High-Level API](high-level-api.md) |
 | 📚 Conhecimento | [Documentos e splitters](documents-and-splitting.md) · [Ingestão](ingestion.md) · [PDF](pdf-ingestion.md) · [Embeddings](embeddings.md) |
 | 🧠 RAG | [Retrieval para iniciantes](retrieval-for-beginners.md) · [Vector store](vector-store.md) · [Schema](database-schema.md) · [Retrieval](retrieval.md) · [Pipeline avançada](retrieval-pipeline.md) · [Protocolo de prompt](prompt-protocol.md) · [Pipeline RAG](rag-pipeline.md) |
 | 🔌 Infra | [Providers](providers.md) · [Cache](caching.md) · [Concorrência](concurrency.md) · [Streaming](streaming.md) |
