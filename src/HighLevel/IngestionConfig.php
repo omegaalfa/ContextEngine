@@ -11,6 +11,5 @@ final readonly class IngestionConfig
         public ?int $concurrency = null,
         public ?int $chunkSize = null,
         public ?int $chunkOverlap = null,
-    ) {
-    }
+    ) {}
 }

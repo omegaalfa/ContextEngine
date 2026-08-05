@@ -6,7 +6,7 @@
   "require": {
     "php": "^8.4",
     "omegaalfa/fiber-event-loop": "^1.0",
-    "omegaalfa/http-client": "^1.0.1",
+    "omegaalfa/http-client": "^1.0.2",
     "omegaalfa/query-builder": "^2.0",
     "omegaalfa/utils": "^1.0",
     "psr/simple-cache": "^3.0"

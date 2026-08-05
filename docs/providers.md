@@ -4,7 +4,7 @@
 |---|---|---|
 | Embeddings OpenAI | `OpenAIEmbeddingProvider` | Buffered HTTP; lote por request. |
 | Embeddings Ollama | `OllamaEmbeddingProvider` | Modelo e dimensão vêm da aplicação. |
-| Resposta OpenAI | `OpenAILanguageModel` | Resposta completa, sem streaming incremental. |
+| Resposta OpenAI | `OpenAILanguageModel` | `complete()` buffered e `stream()` incremental via SSE real. |
 | Resposta Ollama | `OllamaLanguageModel` | Chat local buffered com `stream: false`. |
 | Resposta Gemini | `GeminiLanguageModel` | `generateContent` buffered, sem streaming incremental. |
 
@@ -72,9 +72,9 @@ Os valores não possuem padrão no código. Valide que não estão vazios/zerado
 
 ## OpenAILanguageModel
 
-Construtor: `__construct(string $apiKey, string $model = 'gpt-4.1-mini', AsyncHttpClient $client = new AsyncHttpClient(), string $baseUrl = 'https://api.openai.com/v1')`. `complete(list<ChatMessage>): string` chama `/chat/completions`. `generationFingerprint()` identifica provider/model/parâmetros padrões atuais.
+Construtor: `__construct(string $apiKey, string $model = 'gpt-4.1-mini', AsyncHttpClient $client = new AsyncHttpClient(), string $baseUrl = 'https://api.openai.com/v1')`. `complete(list<ChatMessage>): string` chama `/chat/completions` em modo buffered. `stream(list<ChatMessage>): iterable<AnswerDelta>` usa SSE incremental real no mesmo endpoint com `stream: true`. `generationFingerprint()` identifica provider/model/parâmetros padrões atuais.
 
-O corpo HTTP é buffered. Esta classe implementa `CacheableLanguageModel`, não `StreamingLanguageModel`.
+Esta classe implementa `CacheableLanguageModel` e `StreamingLanguageModel`.
 
 ## OllamaLanguageModel
 

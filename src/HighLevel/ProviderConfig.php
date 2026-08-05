@@ -23,6 +23,5 @@ final readonly class ProviderConfig
         public ?int $embeddingDimensions = null,
         public ?string $apiKey = null,
         public ?string $model = null,
-    ) {
-    }
+    ) {}
 }

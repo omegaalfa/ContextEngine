@@ -227,12 +227,12 @@ O schema é provisionado externamente. Veja [schema](database-schema.md) e [Dock
 
 - `OpenAIEmbeddingProvider`: exige API key, modelo e dimensão; implementa somente `EmbeddingProvider`.
 - `OllamaEmbeddingProvider`: exige modelo, dimensão e endpoint válido; implementa somente `EmbeddingProvider`.
-- `OpenAILanguageModel`: implementa `CacheableLanguageModel`, não streaming.
+- `OpenAILanguageModel`: implementa `CacheableLanguageModel` e `StreamingLanguageModel` (`stream()` incremental via SSE real).
 - `OllamaLanguageModel`: usa `/api/chat` com `stream: false`; implementa `CacheableLanguageModel`, não streaming.
 - `GeminiLanguageModel`: usa `generateContent`, traduz system/user/assistant para o formato Gemini e implementa `CacheableLanguageModel`, não streaming.
 - `JsonClient`: POST JSON materializado; respostas inválidas viram `ProviderException`.
 
-Os providers atuais são buffered. Nenhum divide uma resposta completa em deltas.
+`OllamaLanguageModel` e `GeminiLanguageModel` seguem buffered. O `OpenAILanguageModel` usa streaming incremental real e não faz divisão artificial de resposta pronta.
 
 ## ⛁ Cache
 

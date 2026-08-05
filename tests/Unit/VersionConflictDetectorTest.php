@@ -38,7 +38,7 @@ final class VersionConflictDetectorTest extends TestCase
             revision: 2,
         );
 
-        $conflicts = (new VersionConflictDetector())->detect([$first, $second]);
+        $conflicts = new VersionConflictDetector()->detect([$first, $second]);
 
         self::assertCount(1, $conflicts);
         self::assertSame('overlapping-validity-window', $conflicts[0]->reason);

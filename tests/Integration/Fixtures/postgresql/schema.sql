@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS context_chunks (
     collection text NOT NULL,
     status text NOT NULL DEFAULT 'active',
     content text NOT NULL,
+    search_vector tsvector GENERATED ALWAYS AS (to_tsvector('portuguese', content)) STORED,
     position integer NOT NULL CHECK (position >= 0),
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
     embedding vector(1024) NOT NULL,
@@ -43,3 +44,6 @@ CREATE INDEX IF NOT EXISTS context_chunks_document_position_idx ON context_chunk
 
 CREATE INDEX IF NOT EXISTS context_chunks_embedding_hnsw_idx ON context_chunks
     USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_context_chunks_search_vector ON context_chunks
+    USING GIN (search_vector);

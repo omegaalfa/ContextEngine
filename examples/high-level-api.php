@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use Omegaalfa\ContextEngine\HighLevel\ContextEngine;
+use Omegaalfa\ContextEngine\ContextEngine;
 
 $engine = ContextEngine::create()
     ->tenant('empresa')

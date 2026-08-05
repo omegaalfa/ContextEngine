@@ -15,6 +15,7 @@ CREATE TABLE context_chunks (
     collection text NOT NULL,
     status text NOT NULL,
     content text NOT NULL,
+    search_vector tsvector GENERATED ALWAYS AS (to_tsvector('portuguese', content)) STORED,
     position integer NOT NULL CHECK (position >= 0),
     metadata jsonb NOT NULL DEFAULT '{}',
     embedding vector(1024) NOT NULL,
@@ -28,6 +29,23 @@ CREATE TABLE context_chunks (
 
 CREATE INDEX context_chunks_scope_idx ON context_chunks
     (tenant_id, collection, status, ingestion_state, embedding_space_fingerprint);
+
+CREATE INDEX idx_context_chunks_search_vector ON context_chunks
+    USING GIN (search_vector);
+```
+
+Para atualizar um schema existente sem recriar a tabela:
+
+```sql
+ALTER TABLE context_chunks
+    ADD COLUMN search_vector tsvector
+    GENERATED ALWAYS AS (
+        to_tsvector('portuguese', content)
+    ) STORED;
+
+CREATE INDEX idx_context_chunks_search_vector
+    ON context_chunks
+    USING GIN (search_vector);
 ```
 
 Não há timestamps no schema atual porque o store não fornece esses valores. Adicioná-los exige defaults no banco ou evolução explícita do contrato/schema.
@@ -37,5 +55,7 @@ O schema fornecido está configurado para `OllamaEmbeddingProvider(model: 'bge-m
 Para essa configuração, provider/model/dimensions/revision são `ollama`, `bge-m3`, `1024` e `1`. Não calcule o fingerprint concatenando esses textos manualmente: use `$provider->space()->fingerprint()`, pois `EmbeddingSpace` aplica a canonicalização determinística oficial e inclui `parameters`.
 
 Além do índice de escopo, a fixture cria um índice por documento/posição e um HNSW com `vector_cosine_ops`. Este último acelera a métrica cosseno; outras métricas expostas pela API podem exigir índice correspondente conforme a carga.
+
+Para a perna lexical da busca híbrida, a coluna `search_vector` é obrigatória e usa o dicionário `portuguese` com `websearch_to_tsquery('portuguese', ...)`.
 
 A PK composta é maior que uma chave surrogate, mas elimina identidade técnica sem uso. `document_version` permite manter a versão ativa enquanto a próxima é ingerida. O retrieval sempre filtra `ingestion_state = 'active'`; versões `staged`, `failed` e `superseded` permanecem fora dos resultados.

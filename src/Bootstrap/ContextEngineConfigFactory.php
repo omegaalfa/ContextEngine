@@ -57,6 +57,7 @@ final class ContextEngineConfigFactory
             contextMinimumSources: self::integer('CONTEXT_ENGINE_CONTEXT_MINIMUM_SOURCES', 1),
             contextMaximumSources: self::integer('CONTEXT_ENGINE_CONTEXT_MAXIMUM_SOURCES', 5),
             contextPreferSameDocument: self::boolean('CONTEXT_ENGINE_CONTEXT_PREFER_SAME_DOCUMENT', true),
+            hybridSearch: self::boolean('CONTEXT_ENGINE_HYBRID_SEARCH', false),
             noEvidenceMessage: self::string(
                 'CONTEXT_ENGINE_NO_EVIDENCE_MESSAGE',
                 'Não encontrei evidências suficientes no contexto recuperado para responder a essa pergunta.',

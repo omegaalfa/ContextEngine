@@ -8,7 +8,7 @@ use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Document\Document;
 use Omegaalfa\ContextEngine\Embedding\{EmbeddedChunk,Embedding,EmbeddingSpace};
 use Omegaalfa\ContextEngine\Ingestion\DocumentVersion;
-use Omegaalfa\ContextEngine\Retrieval\{NeighborSearchQuery,VectorSearchQuery};
+use Omegaalfa\ContextEngine\Retrieval\{LexicalSearchQuery,NeighborSearchQuery,RetrievalPolicy,VectorSearchQuery,VersionSelectionPolicy};
 use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
@@ -193,6 +193,105 @@ final class PgVectorIntegrationTest extends TestCase
         self::assertSame(1, $this->store->deleteDocument(new DocumentDeleteQuery('tenant-a')));
         self::assertSame(1, (int)$this->pdo->query('SELECT count(*) FROM context_chunks')->fetchColumn(), 'Tenant-wide deletion must not affect another tenant.');
     }
+
+    public function testLexicalSearchFindsExactIdentifiersInRelevanceOrder(): void
+    {
+        $space = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'lexical');
+        $this->store->storeBatch([
+            $this->embeddedForDocument('generic', 'doc-1', 'tenant-a', 'docs', $space, $this->vector(0)),
+            new EmbeddedChunk(new Chunk('sku', 'doc-2', 'tenant-a', 'SKU-ABX-991 docs SKU-ABX-991', 0, [], 'docs', 'active'), new Embedding($this->vector(0), $space)),
+            new EmbeddedChunk(new Chunk('error', 'doc-3', 'tenant-a', 'ERR_PAYMENT_1047 happened ERR_PAYMENT_1047 ERR_PAYMENT_1047', 0, [], 'docs', 'active'), new Embedding($this->vector(0), $space)),
+        ]);
+
+        $results = $this->store->searchLexical(new LexicalSearchQuery(
+            tenantId: 'tenant-a',
+            terms: 'ERR_PAYMENT_1047',
+            policy: new RetrievalPolicy(limit: 10),
+            collection: 'docs',
+            status: 'active',
+        ));
+
+        self::assertNotSame([], $results);
+        $ids = array_map(static fn (\Omegaalfa\ContextEngine\Retrieval\VectorSearchResult $result): string => $result->chunk->id, $results);
+        self::assertContains('error', $ids);
+        self::assertSame('error', $ids[0]);
+        foreach ($results as $result) {
+            self::assertTrue(is_finite($result->distance));
+            self::assertGreaterThanOrEqual(0.0, $result->distance);
+        }
+    }
+
+    public function testLexicalSearchRespectsTenantCollectionStatusVersionAndEmptyResult(): void
+    {
+        $space = new EmbeddingSpace('ollama', 'bge-m3', 1024, 'lexical-scope');
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $tenantA = new DocumentVersion(
+            new Document('doc-versioned', 'tenant-a', 'v1', collection: 'docs'),
+            $space,
+            'splitter-v1',
+            validFrom: $now->modify('-2 hours'),
+            validUntil: $now->modify('-1 hour'),
+        );
+        $tenantANext = new DocumentVersion(
+            new Document('doc-versioned', 'tenant-a', 'v2', collection: 'docs'),
+            $space,
+            'splitter-v1',
+            validFrom: $now->modify('-10 minutes'),
+            validUntil: $now->modify('+1 hour'),
+            revision: 2,
+            supersedesVersionId: $tenantA->id,
+        );
+
+        $this->store->beginVersion($tenantA);
+        $this->store->stageBatch($tenantA, [new EmbeddedChunk(new Chunk('tenant-a-v1', 'doc-versioned', 'tenant-a', 'ContextPromptBuilder v1', 0, [], 'docs', 'active'), new Embedding($this->vector(0), $space))]);
+        $this->store->activateVersion($tenantA);
+
+        $this->store->beginVersion($tenantANext);
+        $this->store->stageBatch($tenantANext, [new EmbeddedChunk(new Chunk('tenant-a-v2', 'doc-versioned', 'tenant-a', 'ContextPromptBuilder v2.4.17', 0, [], 'docs', 'active'), new Embedding($this->vector(0), $space))]);
+
+        $this->store->storeBatch([
+            new EmbeddedChunk(new Chunk('tenant-b', 'doc-tenant-b', 'tenant-b', 'ContextPromptBuilder', 0, [], 'docs', 'active'), new Embedding($this->vector(0), $space)),
+        ]);
+        $this->store->storeBatch([
+            new EmbeddedChunk(new Chunk('private', 'doc-private', 'tenant-a', 'ContextPromptBuilder', 0, [], 'private', 'active'), new Embedding($this->vector(0), $space)),
+        ]);
+        $this->store->storeBatch([
+            new EmbeddedChunk(new Chunk('inactive', 'doc-inactive', 'tenant-a', 'ContextPromptBuilder', 0, [], 'docs', 'inactive'), new Embedding($this->vector(0), $space)),
+        ]);
+
+        $scoped = $this->store->searchLexical(new LexicalSearchQuery(
+            tenantId: 'tenant-a',
+            terms: 'ContextPromptBuilder',
+            policy: new RetrievalPolicy(limit: 10),
+            collection: 'docs',
+            status: 'active',
+        ));
+        self::assertContains('tenant-a-v1', array_map(static fn (\Omegaalfa\ContextEngine\Retrieval\VectorSearchResult $result): string => $result->chunk->id, $scoped));
+        self::assertNotContains('tenant-b', array_map(static fn (\Omegaalfa\ContextEngine\Retrieval\VectorSearchResult $result): string => $result->chunk->id, $scoped));
+        self::assertNotContains('private', array_map(static fn (\Omegaalfa\ContextEngine\Retrieval\VectorSearchResult $result): string => $result->chunk->id, $scoped));
+        self::assertNotContains('inactive', array_map(static fn (\Omegaalfa\ContextEngine\Retrieval\VectorSearchResult $result): string => $result->chunk->id, $scoped));
+
+        $this->store->activateVersion($tenantANext);
+
+        $validAt = $this->store->searchLexical(new LexicalSearchQuery(
+            tenantId: 'tenant-a',
+            terms: 'v2.4.17',
+            policy: new RetrievalPolicy(limit: 10),
+            collection: 'docs',
+            status: 'active',
+            versionSelectionPolicy: VersionSelectionPolicy::validAt($now),
+        ));
+        self::assertContains('tenant-a-v2', array_map(static fn (\Omegaalfa\ContextEngine\Retrieval\VectorSearchResult $result): string => $result->chunk->id, $validAt));
+
+        $empty = $this->store->searchLexical(new LexicalSearchQuery(
+            tenantId: 'tenant-a',
+            terms: 'NO_MATCH_TERM_1234',
+            policy: new RetrievalPolicy(limit: 10),
+            collection: 'docs',
+            status: 'active',
+        ));
+        self::assertSame([], $empty);
+    }
     private function embedded(string $id, string $tenant, string $collection, EmbeddingSpace $space, array $values): EmbeddedChunk
     {
         return $this->embeddedForDocument($id, 'doc', $tenant, $collection, $space, $values);
@@ -210,7 +309,7 @@ final class PgVectorIntegrationTest extends TestCase
     }
     private function missingColumns(): array
     {
-        $required = ['chunk_id','document_version','ingestion_state','tenant_id','collection','status','embedding','embedding_provider','embedding_model','embedding_dimensions','embedding_revision','embedding_space_fingerprint'];
+        $required = ['chunk_id','document_version','ingestion_state','tenant_id','collection','status','search_vector','embedding','embedding_provider','embedding_model','embedding_dimensions','embedding_revision','embedding_space_fingerprint'];
         $statement = $this->pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='context_chunks'");
         $columns = $statement === false ? [] : $statement->fetchAll(PDO::FETCH_COLUMN);
         return array_values(array_diff($required, $columns));

@@ -11,6 +11,5 @@ final readonly class VersionConflict
         public string $leftVersionId,
         public string $rightVersionId,
         public string $reason,
-    ) {
-    }
+    ) {}
 }

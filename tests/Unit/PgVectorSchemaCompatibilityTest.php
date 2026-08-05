@@ -65,6 +65,25 @@ final class PgVectorSchemaCompatibilityTest extends TestCase
         ));
     }
 
+    public function testSchemaCompatibilityDetectionUsesSqlStateRegardlessOfLocale(): void
+    {
+        $builder = $this->builderThrowing(new class ('coluna "version_status" nao existe', 42703) extends RuntimeException {
+            public function __construct(string $message, int $code)
+            {
+                parent::__construct($message, $code);
+            }
+        });
+
+        $store = new PgVectorStore($builder, new PgVectorSchema());
+
+        $this->expectException(IncompatibleVectorStoreSchemaException::class);
+        $store->search(new VectorSearchQuery(
+            'tenant-a',
+            new Embedding([0.1], new EmbeddingSpace('ollama', 'bge-m3', 1, 'space-a')),
+            collection: 'docs',
+        ));
+    }
+
     public function testRealEmptyResultRemainsAnEmptyArray(): void
     {
         $builder = $this->builderWithResult(new QueryResultDTO([], 0));

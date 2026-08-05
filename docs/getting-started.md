@@ -340,7 +340,7 @@ O builder organiza instruções, separa pergunta e fontes, identifica chunks, re
 
 **Para que serve.** Os chunks recuperados são evidências brutas. O LLM organiza essas evidências numa resposta legível, seguindo as instruções do prompt.
 
-**Como o ContextEngine usa.** Depois de montar o prompt, `RagPipeline` chama `LanguageModel::complete()` e cria `Answer`. O pacote inclui `OpenAILanguageModel`, `OllamaLanguageModel` e `GeminiLanguageModel`; todos são buffered, não streaming incremental.
+**Como o ContextEngine usa.** Depois de montar o prompt, `RagPipeline` chama `LanguageModel::complete()` e cria `Answer`. O pacote inclui `OpenAILanguageModel`, `OllamaLanguageModel` e `GeminiLanguageModel`. Para streaming incremental real, `OpenAILanguageModel` também implementa `StreamingLanguageModel` e pode ser usado com `RagPipeline::stream()`.
 
 ### Tenant
 
@@ -631,11 +631,13 @@ $embeddingProvider = new OllamaEmbeddingProvider(
 );
 ```
 
-Nome e dimensão dependem do modelo instalado e não são determinados pelo pacote. Adapte o schema. Ollama cobre embeddings; para a resposta final, implemente `LanguageModel` ou use OpenAI.
+Nome e dimensão dependem do modelo instalado e não são determinados pelo pacote. Adapte o schema. Ollama cobre embeddings e resposta final; para resposta final também existem adapters OpenAI e Gemini.
 
 ### C — Gemini ou outro provider
 
-O ContextEngine não possui adapter Gemini neste momento. Não existe namespace ou construtor Gemini oficial para copiar. Uma integração deve implementar um ou mais contratos, conforme as capacidades reais:
+O ContextEngine inclui `GeminiLanguageModel` para respostas completas buffered. Isso permite usar Gemini como LLM na etapa final do RAG. O pacote ainda não inclui `EmbeddingProvider` Gemini, então embeddings Gemini exigem adapter próprio.
+
+Uma integração externa deve implementar um ou mais contratos, conforme as capacidades reais:
 
 ```php
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
@@ -651,7 +653,7 @@ function configureEngine(
 }
 ```
 
-Para Gemini, o adapter da aplicação seria responsável por autenticação, endpoint, payload, modelo, dimensão, validação da resposta e `EmbeddingSpace`. Implemente `StreamingLanguageModel` somente se o transporte entregar deltas reais. Consulte o [guia de extensão](extension-guide.md).
+Para embeddings Gemini, o adapter da aplicação seria responsável por autenticação, endpoint, payload, modelo, dimensão, validação da resposta e `EmbeddingSpace`. Implemente `StreamingLanguageModel` somente se o transporte entregar deltas reais. Consulte o [guia de extensão](extension-guide.md).
 
 ---
 
@@ -852,6 +854,10 @@ printf(
 - `batchesPersisted`, `batchesDiscarded`;
 - `chunksProduced`, `chunksSent`, `chunksPersisted`;
 - `failure` (código e mensagem segura), `affectedBatchSequences`, `complete`.
+
+Na API fluente de alto nível, `->openAi(...)` passa a compor embeddings e modelo de linguagem OpenAI por padrão (modelo de chat default `gpt-4.1-mini`).
+Se precisar de outro modelo de chat sem alterar embeddings, use `->openAiLanguageModel(apiKey: ..., model: ...)`.
+`->withLanguageModelFactory(...)` continua com precedência total para customização avançada.
 
 Uma saída possível é `Completa: sim | chunks salvos: 3 | lotes salvos: 3`; números dependem do conteúdo.
 
@@ -1221,9 +1227,9 @@ Execute `php example.php`. Espere linhas no banco, resposta e fontes. Sem decora
 ## 🚧 28. Limitações atuais
 
 - sem interface web, API HTTP ou CLI de aplicação;
-- loader nativo apenas para texto; PDF/HTML exigem implementação;
-- sem busca híbrida ou reranking;
-- providers atuais sem streaming incremental real;
+- loaders nativos para texto e PDF textual; HTML exige implementação;
+- sem busca híbrida lexical + vetorial ou reranking;
+- streaming incremental nativo disponível no `OpenAILanguageModel`; `OllamaLanguageModel` e `GeminiLanguageModel` seguem buffered;
 - extensão, tabela e índices não são criados em runtime;
 - providers externos, como OpenAI ou Gemini, dependem de rede/credencial; Ollama depende de serviço/modelo;
 - Ollama possui adapters de embedding e linguagem; Gemini possui adapter de linguagem, mas embeddings Gemini ainda exigem implementação própria;

@@ -5,18 +5,24 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Provider\OpenAI;
 
 use Omegaalfa\ContextEngine\Contract\CacheableLanguageModel;
+use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\Exception\ProviderException;
 use Omegaalfa\ContextEngine\Prompt\ChatMessage;
 use Omegaalfa\ContextEngine\Provider\Http\JsonClient;
 use Omegaalfa\ContextEngine\Provider\Support\ProviderConfiguration;
+use Omegaalfa\ContextEngine\Rag\AnswerDelta;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
+use Omegaalfa\HttpClient\Http\SseEvent;
+use Omegaalfa\HttpClient\Http\SseStream;
+use RuntimeException;
 
-final readonly class OpenAILanguageModel implements CacheableLanguageModel
+final readonly class OpenAILanguageModel implements CacheableLanguageModel, StreamingLanguageModel
 {
     /**
      * @var JsonClient
      */
     private JsonClient $http;
+    private AsyncHttpClient $streamingHttp;
     public string $model;
     private string $baseUrl;
 
@@ -31,7 +37,8 @@ final readonly class OpenAILanguageModel implements CacheableLanguageModel
         $apiKey = ProviderConfiguration::nonEmpty($apiKey, 'OpenAI API key');
         $this->model = ProviderConfiguration::nonEmpty($model, 'OpenAI language model');
         $this->baseUrl = ProviderConfiguration::baseUrl($baseUrl);
-        $this->http = new JsonClient($client->withBearerToken($apiKey));
+        $this->streamingHttp = $client->withBearerToken($apiKey);
+        $this->http = new JsonClient($this->streamingHttp);
     }
 
     /**
@@ -52,6 +59,55 @@ final readonly class OpenAILanguageModel implements CacheableLanguageModel
         return $content;
     }
 
+    /** @param list<ChatMessage> $messages */
+    public function stream(array $messages): iterable
+    {
+        $future = $this->streamingHttp->streamSsePost(
+            $this->baseUrl . '/chat/completions',
+            body: [
+                'model' => $this->model,
+                'stream' => true,
+                'messages' => $this->messages($messages),
+            ],
+            headers: ['Accept' => 'text/event-stream'],
+            requireDone: true,
+            completionDetector: AsyncHttpClient::doneMarkerCompletionDetector(),
+        );
+        $stream = $future->await();
+        if (!$stream instanceof SseStream) {
+            throw new ProviderException('OpenAI streaming request returned an unexpected stream type.');
+        }
+        $sequence = 0;
+
+        try {
+            /** @var SseEvent $event */
+            foreach ($stream as $event) {
+                if ($event->done()) {
+                    yield new AnswerDelta('', $sequence, true);
+                    return;
+                }
+
+                $payload = self::decodeSsePayload($event->data());
+                $errorMessage = self::errorMessageFromPayload($payload);
+                if ($errorMessage !== null) {
+                    throw new ProviderException($errorMessage);
+                }
+
+                $content = self::contentFromPayload($payload);
+                if ($content === null || $content === '') {
+                    continue;
+                }
+
+                yield new AnswerDelta($content, $sequence, false);
+                ++$sequence;
+            }
+        } catch (RuntimeException $exception) {
+            throw new ProviderException('OpenAI streaming response is invalid or incomplete.', previous: $exception);
+        }
+
+        throw new ProviderException('OpenAI streaming response ended without a completion marker.');
+    }
+
     /**
      * @return string
      */
@@ -67,5 +123,51 @@ final readonly class OpenAILanguageModel implements CacheableLanguageModel
     private function messages(array $messages): array
     {
         return array_map(static fn (ChatMessage $m): array => ['role' => $m->role->value, 'content' => $m->content], $messages);
+    }
+
+    /** @return array<string, mixed> */
+    private static function decodeSsePayload(string $data): array
+    {
+        $payload = json_decode($data, true);
+        if (!is_array($payload) || array_is_list($payload)) {
+            throw new ProviderException('OpenAI streaming event is not a JSON object.');
+        }
+
+        $object = [];
+        foreach ($payload as $key => $value) {
+            if (!is_string($key)) {
+                throw new ProviderException('OpenAI streaming event has an invalid key.');
+            }
+            $object[$key] = $value;
+        }
+
+        return $object;
+    }
+
+    /** @param array<string, mixed> $payload */
+    private static function errorMessageFromPayload(array $payload): ?string
+    {
+        $error = $payload['error'] ?? null;
+        if (!is_array($error)) {
+            return null;
+        }
+
+        $message = $error['message'] ?? null;
+        if (is_string($message) && trim($message) !== '') {
+            return 'OpenAI streaming request failed: ' . trim($message);
+        }
+
+        return 'OpenAI streaming request failed.';
+    }
+
+    /** @param array<string, mixed> $payload */
+    private static function contentFromPayload(array $payload): ?string
+    {
+        $choices = $payload['choices'] ?? null;
+        $firstChoice = is_array($choices) ? ($choices[0] ?? null) : null;
+        $delta = is_array($firstChoice) ? ($firstChoice['delta'] ?? null) : null;
+        $content = is_array($delta) ? ($delta['content'] ?? null) : null;
+
+        return is_string($content) ? $content : null;
     }
 }

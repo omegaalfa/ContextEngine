@@ -95,6 +95,32 @@ $engine = ContextEngine::create()
     ->build();
 ```
 
+## Modos de resposta
+
+A API de alto nivel possui dois modos de leitura de resposta:
+
+- `ask(...)`: modo padrao, retorna a resposta final completa (buffered).
+- `stream(...)`: modo incremental, retorna deltas conforme chegam do provider.
+
+Exemplo rapido:
+
+```php
+$engine = ContextEngine::create()
+    ->openAi(apiKey: 'sk-...', model: 'text-embedding-3-small')
+    ->build();
+
+$full = $engine->ask('How long is the refund window?', 'acme-support');
+
+foreach ($engine->stream('How long is the refund window?', 'acme-support') as $delta) {
+    if ($delta->final) {
+        break;
+    }
+    echo $delta->content;
+}
+```
+
+Observacao: `ask(...)` continua sendo o padrao. `stream(...)` e opt-in e depende do provider implementar streaming incremental real.
+
 ## Configuração via ambiente
 
 ```php

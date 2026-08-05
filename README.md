@@ -24,16 +24,19 @@ ContextEngine é uma biblioteca PHP para construir pipelines de RAG (*Retrieval-
 
 | Disponível | Ainda não incluído |
 |---|---|
-| ✅ Pipeline incremental de ingestão | ⚠️ Loaders nativos para PDF, HTML ou Markdown |
-| ✅ Busca vetorial com PostgreSQL/pgvector | ⚠️ Adapter Gemini |
+| ✅ Pipeline incremental de ingestão | ⚠️ Loaders estruturados para HTML ou Markdown |
+| ✅ Busca vetorial com PostgreSQL/pgvector | ⚠️ Embeddings Gemini |
 | ✅ RAG com resposta e fontes | ⚠️ Busca híbrida |
 | ✅ Tenant, collection e status | ⚠️ Reranking |
-| ✅ `EmbeddingSpace` e fingerprint | ⚠️ Streaming incremental nos providers atuais |
+| ✅ `EmbeddingSpace` e fingerprint | ⚠️ Streaming incremental ainda nao incluido em todos os providers |
 | ✅ Providers substituíveis por contratos | ⚠️ Interface web, API ou autenticação |
 | ✅ Cache PSR-16 opcional por decorators | |
 | ✅ Concorrência controlada com Fibers | |
 | ✅ Upsert idempotente por espaço vetorial | |
 | ✅ Ativação atômica de versões de documento | |
+| ✅ Multi-query, RRF, vizinhos e seleção adaptativa | |
+| ✅ Diagnósticos de retrieval/RAG | |
+| ✅ LLMs OpenAI, Ollama e Gemini | |
 
 ## 🧭 Como funciona
 
@@ -114,9 +117,21 @@ php examples/simple-rag.php "Em quanto tempo posso solicitar um reembolso?"
 php examples/ingest-algorithms-book.php
 php examples/llphant-simple-search.php
 php examples/llphant-simple-rag.php
+php examples/01-vector-search.php
+php examples/02-lexical-search.php
+php examples/03-multi-query.php
+php examples/04-rrf.php
+php examples/05-context-expansion.php
+php examples/06-hybrid-search.php
+php examples/07-diagnostics.php
+php examples/08-end-to-end-rag.php
+php examples/09-ask.php
+php examples/10-stream.php
 ```
 
 `simple-ingestion.php` usa o Bootstrap tipado e aceita opcionalmente o caminho de outro arquivo como primeiro argumento. O segundo comando faz somente retrieval vetorial e mostra os chunks encontrados; a LLM é chamada apenas pelo terceiro comando.
+
+Os exemplos numerados `01` a `08` sao independentes, rodam sem banco externo e imprimem cada etapa do pipeline com tempos, documentos encontrados e chunks selecionados. Veja o guia em [Playbook de exemplos](docs/examples-retrieval-playbook.md).
 
 ## ⚡ Composição pronta e tipada
 
@@ -214,14 +229,33 @@ foreach ($answer->sources as $source) {
 }
 ```
 
+## 🔁 ask() vs stream()
+
+Por padrao, a leitura de resposta usa `ask(...)` e retorna a resposta final completa (buffered).
+
+Para leitura incremental, a aplicacao deve chamar `stream(...)` explicitamente:
+
+```php
+$full = $context->rag->ask(new Question('Explique a politica.', 'tenant-42'));
+
+foreach ($context->rag->stream(new Question('Explique a politica.', 'tenant-42')) as $delta) {
+    if ($delta->final) {
+        break;
+    }
+    echo $delta->content;
+}
+```
+
+No estado atual do pacote, `OpenAILanguageModel` oferece streaming incremental real; outros providers podem permanecer apenas no fluxo buffered.
+
 ## 🧩 Infraestrutura incluída
 
 - **Embeddings:** `OpenAIEmbeddingProvider` e `OllamaEmbeddingProvider`; o schema fornecido está preparado para `bge-m3`/1024 via Ollama.
-- **LLM:** `OpenAILanguageModel`, `OllamaLanguageModel` e `GeminiLanguageModel`, todos com resposta buffered.
+- **LLM:** `OpenAILanguageModel`, `OllamaLanguageModel` e `GeminiLanguageModel` para resposta completa; `OpenAILanguageModel` tambem suporta streaming incremental real.
 - **Store:** `PgVectorStore` via `omegaalfa/query-builder`.
 - **Cache:** `CachedEmbeddingProvider` e `CachedLanguageModel`, ambos PSR-16.
 - **Concorrência:** `FiberBatchEmbeddingExecutor`, sem `Future` na API pública. Providers baseados em `AsyncHttpClient` compartilham com o executor uma única instância de `FiberEventLoop` criada no bootstrap.
-- **Streaming:** contrato independente, sem provider incremental incluído atualmente.
+- **Streaming:** contrato independente; streaming incremental real disponivel no provider OpenAI.
 - **Contexto vazio:** o RAG não chama o LLM sem fontes; retorna a mensagem configurada pela política de ausência de evidência.
 - **PDF textual:** `PdfDocumentLoader` com janelas configuráveis e `PopplerPdfTextExtractor` opcional via binário `pdftotext`.
 
@@ -237,7 +271,7 @@ O pacote inclui `GeminiLanguageModel` para respostas completas. Embeddings Gemin
 
 ### Ainda não implementado
 
-- busca híbrida, reranking e streaming incremental;
+- reranking e streaming incremental para providers que ainda nao suportam essa capacidade;
 - OCR para PDFs escaneados e análise automática de capítulos;
 - loaders estruturados para HTML, Markdown e formatos de escritório.
 

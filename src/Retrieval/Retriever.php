@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Retrieval;
 
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
+use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\NeighborAwareVectorStore;
 use Omegaalfa\ContextEngine\Contract\QueryRewriter;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
 use Omegaalfa\ContextEngine\Rag\Question;
+use Omegaalfa\ContextEngine\Retrieval\LexicalSearchQuery;
 
 final readonly class Retriever
 {
+    private const LEXICAL_RANKING_KEY = '__lexical__';
+
     private QueryRewriter $queryRewriter;
     private NeighborExpansion $neighborExpansion;
     private ReciprocalRankFusion $fusion;
@@ -29,6 +33,7 @@ final readonly class Retriever
         ?ReciprocalRankFusion $fusion = null,
         private ?ContextRelevancePolicy $contextRelevancePolicy = null,
         private ?VersionSelectionPolicy $versionSelectionPolicy = null,
+        private ?LexicalSearchStore $lexicalStore = null,
     ) {
         $this->queryRewriter = $queryRewriter ?? new IdentityQueryRewriter();
         $this->neighborExpansion = $neighborExpansion ?? new NeighborExpansion();
@@ -44,11 +49,13 @@ final readonly class Retriever
         $totalStarted = hrtime(true);
         $planningStarted = hrtime(true);
         $plan = $this->queryRewriter->rewrite($question);
+        $diagnosticQueries = $plan->queries;
         $planning = self::elapsed($planningStarted);
         $retrievalStarted = hrtime(true);
         $rankings = [];
         $hits = [];
         $resultsByQuery = [];
+        $lexicalRetrieval = null;
         foreach ($plan->queries as $query) {
             $embedding = $this->embeddings->embed($query, $question->tenantId);
             $rankings[$query] = $this->store->search(new VectorSearchQuery(
@@ -60,18 +67,26 @@ final readonly class Retriever
                 $this->versionSelectionPolicy,
             ));
             $hits[$query] = count($rankings[$query]);
-            $resultsByQuery[$query] = array_map(
-                static fn (VectorSearchResult $result, int $offset): QueryResultDiagnostic => new QueryResultDiagnostic(
-                    $query,
-                    $offset + 1,
-                    $result->chunk->id,
-                    $result->chunk->documentId,
-                    $result->chunk->position,
-                    $result->distance,
-                ),
-                $rankings[$query],
-                array_keys($rankings[$query]),
+            $resultsByQuery[$query] = $this->toQueryDiagnostics($query, $rankings[$query]);
+        }
+        if ($this->lexicalStore !== null) {
+            $lexicalStarted = hrtime(true);
+            $lexicalQuery = new LexicalSearchQuery(
+                tenantId: $question->tenantId,
+                terms: $question->content,
+                policy: $this->policy,
+                collection: $this->collection,
+                status: $this->status,
+                versionSelectionPolicy: $this->versionSelectionPolicy,
             );
+            $rankings[self::LEXICAL_RANKING_KEY] = $this->lexicalStore->searchLexical($lexicalQuery);
+            $hits[self::LEXICAL_RANKING_KEY] = count($rankings[self::LEXICAL_RANKING_KEY]);
+            $resultsByQuery[self::LEXICAL_RANKING_KEY] = $this->toQueryDiagnostics(
+                self::LEXICAL_RANKING_KEY,
+                $rankings[self::LEXICAL_RANKING_KEY],
+            );
+            $diagnosticQueries[] = self::LEXICAL_RANKING_KEY;
+            $lexicalRetrieval = self::elapsed($lexicalStarted);
         }
         $retrieval = self::elapsed($retrievalStarted);
         $fusionStarted = hrtime(true);
@@ -102,7 +117,7 @@ final readonly class Retriever
         $selectionTime = self::elapsed($selectionStarted);
         $diagnostics = new RetrievalDiagnostics(
             $plan->original,
-            $plan->queries,
+            $diagnosticQueries,
             $hits,
             $resultsByQuery,
             null,
@@ -115,6 +130,7 @@ final readonly class Retriever
             [
                 'queryPlanning' => $planning,
                 'retrieval' => $retrieval,
+                ...($lexicalRetrieval !== null ? ['lexicalRetrieval' => $lexicalRetrieval] : []),
                 'fusion' => $fusionTime,
                 'expansion' => $expansion,
                 'selection' => $selectionTime,
@@ -123,6 +139,26 @@ final readonly class Retriever
             $selectionDecisions,
         );
         return new RetrievalOutcome($selection['selected'], $diagnostics);
+    }
+
+    /**
+     * @param list<VectorSearchResult> $results
+     * @return list<QueryResultDiagnostic>
+     */
+    private function toQueryDiagnostics(string $query, array $results): array
+    {
+        return array_map(
+            static fn (VectorSearchResult $result, int $offset): QueryResultDiagnostic => new QueryResultDiagnostic(
+                $query,
+                $offset + 1,
+                $result->chunk->id,
+                $result->chunk->documentId,
+                $result->chunk->position,
+                $result->distance,
+            ),
+            $results,
+            array_keys($results),
+        );
     }
 
     /**

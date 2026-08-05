@@ -261,7 +261,7 @@ languageModelFactory: static fn (AsyncHttpClient $http): OpenAILanguageModel =>
     ),
 ```
 
-Nenhuma dessas classes implementa streaming incremental. Os adapters atuais recebem a resposta completa e implementam `CacheableLanguageModel`.
+`OpenAILanguageModel` implementa `StreamingLanguageModel` com SSE incremental real. `OllamaLanguageModel` e `GeminiLanguageModel` seguem buffered e implementam apenas `CacheableLanguageModel`.
 
 ---
 

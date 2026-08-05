@@ -147,7 +147,7 @@ Contém `ChatMessage`, `Role` e `ContextPromptBuilder`. Existe para converter pe
 
 ### `Provider`
 
-Contém adaptadores para serviços externos: OpenAI, Ollama e o cliente JSON compartilhado. Existe para traduzir contratos estáveis em requisições e payloads de fornecedores. Depende de HttpClient, contratos e objetos de embedding/prompt; ingestão, retrieval e RAG os recebem pelas interfaces. Nunca deve controlar a janela global de ingestão, persistir chunks, expor tipos do HttpClient ou simular streaming.
+Contém adaptadores para serviços externos: OpenAI, Ollama, Gemini e o cliente JSON compartilhado. Existe para traduzir contratos estáveis em requisições e payloads de fornecedores. Depende de HttpClient, contratos e objetos de embedding/prompt; ingestão, retrieval e RAG os recebem pelas interfaces. Nunca deve controlar a janela global de ingestão, persistir chunks, expor tipos do HttpClient ou simular streaming.
 
 ### `Rag`
 
@@ -195,13 +195,21 @@ Se um lote falha no meio da janela, o executor drena operações iniciadas, não
 ```text
 Question
    ↓
-Embedding da pergunta + EmbeddingSpace
+QueryRewriter
    ↓
-VectorSearchQuery
+Embedding da pergunta ou das variações
+   ↓
+VectorSearchQuery por consulta
    ↓
 VectorStore::search()
    ↓
-list<VectorSearchResult>
+ReciprocalRankFusion + deduplicação
+   ↓
+NeighborExpansion opcional
+   ↓
+AdaptiveContextSelector opcional
+   ↓
+ContextSelector: limite de chunks e caracteres
    ↓
 ContextPromptBuilder → list<ChatMessage>
    ↓
@@ -211,13 +219,19 @@ Answer
 ```
 
 1. `RagPipeline::ask()` recebe um `Question` pronto ou uma string acompanhada de `tenantId`; neste segundo caso cria `Question`.
-2. `Retriever::retrieve()` chama `EmbeddingProvider::embed()` com conteúdo e tenant da pergunta, criando `Embedding` no espaço do provider.
-3. O retriever cria `VectorSearchQuery` com tenant, embedding, `RetrievalPolicy`, collection opcional e status.
-4. `PgVectorStore::search()` converte a métrica pública para a métrica do QueryBuilder e monta nearest-neighbor search. Tenant, status, provider, model, dimensions, revision e fingerprint entram no SQL; collection também entra quando configurada.
-5. Cada linha válida vira `Chunk` e depois `VectorSearchResult`. `maximumDistance`, se configurada, elimina resultados acima do limiar após a consulta limitada.
-6. `ContextPromptBuilder::build()` recebe `Question` e resultados. Ele cria duas `ChatMessage`: uma de sistema e uma de usuário com a pergunta e fontes claramente delimitadas, identificadas e tratadas como dados não confiáveis.
-7. `LanguageModel::complete()` recebe as mensagens e devolve texto. Se houver `CachedLanguageModel` habilitado, a consulta pode ser atendida pelo cache usando tenant, identidade de geração, mensagens e versão do prompt.
-8. A pipeline cria `Answer` com conteúdo e os mesmos `VectorSearchResult` usados como fontes.
+2. `Retriever::retrieve()` ou `retrieveWithDiagnostics()` passa a pergunta pelo `QueryRewriter`. No modo simples, só existe a pergunta original. Com `HeuristicQueryRewriter`, a engine cria variações determinísticas para melhorar a chance de encontrar evidências.
+3. Para cada consulta planejada, o retriever chama `EmbeddingProvider::embed()` com conteúdo e tenant, criando `Embedding` no espaço do provider.
+4. O retriever cria `VectorSearchQuery` com tenant, embedding, `RetrievalPolicy`, collection opcional e status.
+5. `PgVectorStore::search()` converte a métrica pública para a métrica do QueryBuilder e monta nearest-neighbor search. Tenant, status, provider, model, dimensions, revision e fingerprint entram no SQL; collection também entra quando configurada.
+6. Os resultados das consultas são fundidos por `ReciprocalRankFusion`. Em linguagem simples, se o mesmo chunk aparece bem colocado em mais de uma busca, ele ganha força no ranking final.
+7. `NeighborExpansion`, quando configurada e suportada pelo store, inclui chunks próximos no mesmo documento e versão para completar o trecho.
+8. `AdaptiveContextSelector`, quando configurado, reduz ruído: pode manter só a melhor fonte quando ela é suficiente, preservar uma fonte complementar ou descartar duplicatas.
+9. `ContextSelector` aplica o orçamento final de quantidade de chunks e caracteres. Ele descarta chunks inteiros; não corta uma fonte no meio silenciosamente.
+10. `ContextPromptBuilder::build()` recebe `Question` e resultados finais. Ele cria duas `ChatMessage`: uma de sistema e uma de usuário com a pergunta e fontes claramente delimitadas, identificadas e tratadas como dados não confiáveis.
+11. `LanguageModel::complete()` recebe as mensagens e devolve texto. Se houver `CachedLanguageModel` habilitado, a consulta pode ser atendida pelo cache usando tenant, identidade de geração, mensagens e versão do prompt.
+12. A pipeline cria `Answer` com conteúdo e os mesmos `VectorSearchResult` usados como fontes.
+
+Para depuração, `RetrievalDiagnostics` mostra consultas, hits, ranking fundido, vizinhos, descartes e tempos. `RagDiagnostics` acrescenta dados do prompt e do modelo. Isso é diagnóstico da execução; observabilidade externa com logs, métricas e tracing ainda pertence ao roadmap.
 
 Em `RagPipeline::stream()`, as etapas de retrieval e prompt são iguais. A última etapa usa o contrato independente `StreamingLanguageModel` e produz `AnswerDelta`; não existe conversão de um `Answer` completo em deltas.
 
@@ -275,7 +289,7 @@ Implemente quando um serviço recebe `list<ChatMessage>` e retorna uma resposta 
 
 Implemente somente quando o transporte entrega fragmentos antes da resposta completa. É um contrato independente porque completar e transmitir são capacidades diferentes. Um provider pode implementar ambos por meio de duas interfaces, mas uma não implica a outra.
 
-`OpenAILanguageModel` atual usa `AsyncHttpClient` de modo buffered: o corpo é materializado antes do parse. Por isso ele implementa `CacheableLanguageModel`, não `StreamingLanguageModel`. Dividir a string pronta em `AnswerDelta` criaria apenas uma aparência de streaming, sem reduzir latência ou memória. Quando a aplicação chama `RagPipeline::stream()` sem provider incremental, recebe `StreamingNotSupportedException`.
+`OpenAILanguageModel` implementa `CacheableLanguageModel` para `complete()` e também `StreamingLanguageModel` para `stream()` incremental real via SSE. Quando a aplicação chama `RagPipeline::stream()` com um provider que nao implementa streaming incremental, recebe `StreamingNotSupportedException`.
 
 ## 7. Persistência
 
@@ -419,14 +433,14 @@ Ao estender, valide cedo, mantenha tenant explícito, não exponha tipos do SDK 
 
 Ainda não fazem parte do núcleo:
 
-- providers adicionais de embeddings e LLM;
+- providers adicionais de embeddings e LLM, como embeddings Gemini e adapters Anthropic;
 - streaming SSE/chunked oficial nos providers atuais;
 - reranking lexical, neural ou cross-encoder;
-- busca híbrida vetorial + full-text;
+- busca híbrida lexical + vetorial, como full-text/BM25 + embeddings;
 - OCR e análise estrutural para PDF; loaders HTML, Markdown, bancos e object storage;
 - splitters baseados em tokens, semântica ou estrutura de código;
 - filtros arbitrários de metadata além do escopo atual;
-- observabilidade padronizada com métricas, tracing e eventos;
+- observabilidade externa padronizada com logs, métricas, tracing e eventos;
 - estratégias integradas de retry, backoff e rate limiting;
 - migrações ou provisionamento de schema em runtime;
 - suporte nativo a outros bancos vetoriais;

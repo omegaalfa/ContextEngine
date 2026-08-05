@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
+use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\NeighborAwareVectorStore;
 use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
@@ -21,6 +22,7 @@ use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
 use Omegaalfa\ContextEngine\Retrieval\HeuristicQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\IdentityQueryRewriter;
+use Omegaalfa\ContextEngine\Retrieval\LexicalSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
 use Omegaalfa\ContextEngine\Retrieval\NeighborSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\QueryMatch;
@@ -29,8 +31,8 @@ use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
-use Omegaalfa\ContextEngine\Retrieval\VersionSelectionPolicy;
 use Omegaalfa\ContextEngine\Retrieval\VersionedSourceProvenance;
+use Omegaalfa\ContextEngine\Retrieval\VersionSelectionPolicy;
 use Omegaalfa\ContextEngine\VectorStore\ChunkDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\CollectionDeleteQuery;
 use Omegaalfa\ContextEngine\VectorStore\DocumentDeleteQuery;
@@ -199,6 +201,204 @@ final class AdvancedRetrievalTest extends TestCase
         $defaultRetriever = new Retriever($provider, $store);
         $defaultRetriever->retrieve(new Question('Explique.', 'tenant'));
         self::assertNull($store->lastQuery->versionSelectionPolicy);
+    }
+
+    public function testRetrieverWithoutLexicalStoreKeepsCurrentBehavior(): void
+    {
+        $space = new EmbeddingSpace('test', 'model', 1);
+        $provider = new class ($space) implements EmbeddingProvider {
+            public function __construct(private EmbeddingSpace $space) {}
+            public function space(): EmbeddingSpace
+            {
+                return $this->space;
+            }
+            public function embed(string $text, string $tenantId): Embedding
+            {
+                return new Embedding([1], $this->space);
+            }
+            public function embedBatch(EmbeddingBatchRequest $request): array
+            {
+                return [];
+            }
+        };
+        $store = new class () implements VectorStore {
+            public function storeBatch(array $chunks): void {}
+            public function search(VectorSearchQuery $query): array
+            {
+                return [new VectorSearchResult(new Chunk('vector-only', 'doc', $query->tenantId, 'content', 0, [], 'default', 'active'), 0.2, 'v1')];
+            }
+            public function deleteChunk(ChunkDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function deleteDocument(DocumentDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function clearCollection(CollectionDeleteQuery $query): int
+            {
+                return 0;
+            }
+        };
+
+        $outcome = new Retriever($provider, $store)->retrieveWithDiagnostics(new Question('ERR_PAYMENT_1047', 'tenant-a'));
+
+        self::assertArrayNotHasKey('__lexical__', $outcome->diagnostics->hitsPerQuery);
+        self::assertArrayNotHasKey('__lexical__', $outcome->diagnostics->resultsByQuery);
+        self::assertSame(['vector-only'], array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $outcome->results));
+    }
+
+    public function testRetrieverAddsLexicalRankingToRrfDiagnosticsAndDeduplicatesHits(): void
+    {
+        $space = new EmbeddingSpace('test', 'model', 1);
+        $provider = new class ($space) implements EmbeddingProvider {
+            public function __construct(private EmbeddingSpace $space) {}
+            public function space(): EmbeddingSpace
+            {
+                return $this->space;
+            }
+            public function embed(string $text, string $tenantId): Embedding
+            {
+                return new Embedding([1], $this->space);
+            }
+            public function embedBatch(EmbeddingBatchRequest $request): array
+            {
+                return [];
+            }
+        };
+        $vectorResult = new VectorSearchResult(
+            new Chunk('shared', 'doc-a', 'tenant-a', 'vector', 0, [], 'default', 'active'),
+            0.6,
+            'v1',
+        );
+        $vectorStore = new class ($vectorResult) implements VectorStore {
+            public function __construct(private VectorSearchResult $vectorResult) {}
+            public function storeBatch(array $chunks): void {}
+            public function search(VectorSearchQuery $query): array
+            {
+                return [$this->vectorResult];
+            }
+            public function deleteChunk(ChunkDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function deleteDocument(DocumentDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function clearCollection(CollectionDeleteQuery $query): int
+            {
+                return 0;
+            }
+        };
+        $lexicalStore = new class ($vectorResult) implements LexicalSearchStore {
+            public ?LexicalSearchQuery $lastQuery = null;
+            public function __construct(private VectorSearchResult $shared) {}
+            public function searchLexical(LexicalSearchQuery $query): array
+            {
+                $this->lastQuery = $query;
+
+                return [
+                    new VectorSearchResult(
+                        new Chunk('lexical-only', 'doc-b', $query->tenantId, 'SKU-ABX-991', 0, [], 'default', 'active'),
+                        0.1,
+                        'v2',
+                    ),
+                    new VectorSearchResult(
+                        $this->shared->chunk,
+                        0.2,
+                        $this->shared->documentVersion,
+                    ),
+                ];
+            }
+        };
+
+        $outcome = new Retriever(
+            embeddings: $provider,
+            store: $vectorStore,
+            policy: new RetrievalPolicy(limit: 5),
+            lexicalStore: $lexicalStore,
+        )->retrieveWithDiagnostics(new Question('SKU-ABX-991', 'tenant-a'));
+
+        self::assertNotNull($lexicalStore->lastQuery);
+        self::assertSame('SKU-ABX-991', $lexicalStore->lastQuery->terms);
+        self::assertArrayHasKey('__lexical__', $outcome->diagnostics->hitsPerQuery);
+        self::assertArrayHasKey('__lexical__', $outcome->diagnostics->resultsByQuery);
+        self::assertArrayHasKey('lexicalRetrieval', $outcome->diagnostics->timingsMilliseconds);
+
+        $selectedIds = array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $outcome->results);
+        self::assertContains('shared', $selectedIds);
+        self::assertContains('lexical-only', $selectedIds);
+
+        $sharedResult = null;
+        foreach ($outcome->results as $result) {
+            if ($result->chunk->id === 'shared') {
+                $sharedResult = $result;
+                break;
+            }
+        }
+        self::assertNotNull($sharedResult);
+        $matchQueries = array_values(array_unique(array_map(
+            static fn (QueryMatch $match): string => $match->query,
+            $sharedResult->matches,
+        )));
+        self::assertContains('__lexical__', $matchQueries);
+        self::assertContains('SKU-ABX-991', $matchQueries);
+    }
+
+    public function testRetrieverHybridSearchStillRespectsFusedLimit(): void
+    {
+        $space = new EmbeddingSpace('test', 'model', 1);
+        $provider = new class ($space) implements EmbeddingProvider {
+            public function __construct(private EmbeddingSpace $space) {}
+            public function space(): EmbeddingSpace
+            {
+                return $this->space;
+            }
+            public function embed(string $text, string $tenantId): Embedding
+            {
+                return new Embedding([1], $this->space);
+            }
+            public function embedBatch(EmbeddingBatchRequest $request): array
+            {
+                return [];
+            }
+        };
+        $vectorStore = new class () implements VectorStore {
+            public function storeBatch(array $chunks): void {}
+            public function search(VectorSearchQuery $query): array
+            {
+                return [new VectorSearchResult(new Chunk('vector-top', 'doc-a', $query->tenantId, 'vector', 0, [], 'default', 'active'), 0.2, 'v1')];
+            }
+            public function deleteChunk(ChunkDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function deleteDocument(DocumentDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function clearCollection(CollectionDeleteQuery $query): int
+            {
+                return 0;
+            }
+        };
+        $lexicalStore = new class () implements LexicalSearchStore {
+            public function searchLexical(LexicalSearchQuery $query): array
+            {
+                return [new VectorSearchResult(new Chunk('lexical-top', 'doc-b', $query->tenantId, 'ContextPromptBuilder', 0, [], 'default', 'active'), 0.1, 'v2')];
+            }
+        };
+
+        $outcome = new Retriever(
+            embeddings: $provider,
+            store: $vectorStore,
+            policy: new RetrievalPolicy(limit: 5),
+            fusedLimit: 1,
+            lexicalStore: $lexicalStore,
+        )->retrieveWithDiagnostics(new Question('ContextPromptBuilder', 'tenant-a'));
+
+        self::assertCount(1, $outcome->results);
     }
 
     public function testRagDiagnosticsAndCapturedPromptKeepReadableSourceAndOriginalQuestion(): void

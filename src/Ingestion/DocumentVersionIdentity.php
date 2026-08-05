@@ -10,6 +10,5 @@ final readonly class DocumentVersionIdentity
         public string $documentId,
         public string $versionId,
         public int $revision,
-    ) {
-    }
+    ) {}
 }

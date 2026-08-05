@@ -11,6 +11,7 @@ use Omegaalfa\ContextEngine\Contract\VectorStore;
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Ingestion\IngestionReport;
 use Omegaalfa\ContextEngine\Rag\Answer;
+use Omegaalfa\ContextEngine\Rag\AnswerDelta;
 use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Rag\RagExecution;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
@@ -48,6 +49,12 @@ final readonly class ContextEngineContext
     public function ask(Question|string $question, ?string $tenantId = null): Answer
     {
         return $this->rag->ask($question, $tenantId);
+    }
+
+    /** @return iterable<AnswerDelta> */
+    public function stream(Question|string $question, ?string $tenantId = null): iterable
+    {
+        return $this->rag->stream($question, $tenantId);
     }
 
     /** @return list<VectorSearchResult> */

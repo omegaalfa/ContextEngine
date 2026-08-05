@@ -6,13 +6,13 @@ namespace Omegaalfa\ContextEngine\Tests\Unit;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\BatchEmbeddingExecutor;
 use Omegaalfa\ContextEngine\Contract\DocumentLoader;
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Contract\TextSplitter;
-use Omegaalfa\ContextEngine\Contract\VersionedVectorStore;
-use Omegaalfa\ContextEngine\Chunk\Chunk;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
+use Omegaalfa\ContextEngine\Contract\VersionedVectorStore;
 use Omegaalfa\ContextEngine\Document\Document;
 use Omegaalfa\ContextEngine\Embedding\EmbeddedChunk;
 use Omegaalfa\ContextEngine\Embedding\Embedding;
@@ -69,28 +69,57 @@ final class IngestionPipelineVersionValidationTest extends TestCase
 
         $pipeline = new IngestionPipeline(
             new class () implements TextSplitter {
-                public function split(Document $document): array { return []; }
-                public function fingerprint(): string { return 'splitter'; }
+                public function split(Document $document): array
+                {
+                    return [];
+                }
+                public function fingerprint(): string
+                {
+                    return 'splitter';
+                }
             },
             new class ($space) implements EmbeddingProvider {
                 public function __construct(private EmbeddingSpace $space) {}
-                public function space(): EmbeddingSpace { return $this->space; }
-                public function embed(string $text, string $tenantId): Embedding { return new Embedding([1.0, 0.0, 0.0], $this->space); }
-                public function embedBatch(EmbeddingBatchRequest $request): array { return []; }
+                public function space(): EmbeddingSpace
+                {
+                    return $this->space;
+                }
+                public function embed(string $text, string $tenantId): Embedding
+                {
+                    return new Embedding([1.0, 0.0, 0.0], $this->space);
+                }
+                public function embedBatch(EmbeddingBatchRequest $request): array
+                {
+                    return [];
+                }
             },
-            new class () implements VersionedVectorStore, VectorStore {
+            new class () implements VersionedVectorStore,
+                VectorStore {
                 public function beginVersion(DocumentVersion $version): void {}
                 public function stageBatch(DocumentVersion $version, array $chunks): void {}
                 public function activateVersion(DocumentVersion $version): void {}
                 public function failVersion(DocumentVersion $version): void {}
                 public function storeBatch(array $chunks): void {}
-                public function search(VectorSearchQuery $query): array { return []; }
-                public function deleteChunk(ChunkDeleteQuery $query): int { return 0; }
-                public function deleteDocument(DocumentDeleteQuery $query): int { return 0; }
-                public function clearCollection(CollectionDeleteQuery $query): int { return 0; }
+                public function search(VectorSearchQuery $query): array
+                {
+                    return [];
+                }
+                public function deleteChunk(ChunkDeleteQuery $query): int
+                {
+                    return 0;
+                }
+                public function deleteDocument(DocumentDeleteQuery $query): int
+                {
+                    return 0;
+                }
+                public function clearCollection(CollectionDeleteQuery $query): int
+                {
+                    return 0;
+                }
             },
             new class () implements BatchEmbeddingExecutor {
-                public function execute(iterable $batches, EmbeddingProvider $provider): iterable {
+                public function execute(iterable $batches, EmbeddingProvider $provider): iterable
+                {
                     return [];
                 }
             },
@@ -100,7 +129,10 @@ final class IngestionPipelineVersionValidationTest extends TestCase
         );
 
         $loader = new class () implements DocumentLoader {
-            public function load(): iterable { yield new Document('doc', 'tenant', 'content', collection: 'docs'); }
+            public function load(): iterable
+            {
+                yield new Document('doc', 'tenant', 'content', collection: 'docs');
+            }
         };
 
         $this->expectException(\Omegaalfa\ContextEngine\Exception\IngestionException::class);

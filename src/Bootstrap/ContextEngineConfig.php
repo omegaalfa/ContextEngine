@@ -47,6 +47,7 @@ final readonly class ContextEngineConfig
         public int            $contextMinimumSources = 1,
         public int            $contextMaximumSources = 5,
         public bool           $contextPreferSameDocument = true,
+        public bool           $hybridSearch = false,
         public string         $noEvidenceMessage = 'Não encontrei evidências suficientes no contexto recuperado para responder a essa pergunta.',
     ) {
         if (trim($collection) === '' || trim($status) === '') {

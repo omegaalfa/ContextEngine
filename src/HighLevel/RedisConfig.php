@@ -10,6 +10,5 @@ final readonly class RedisConfig
         public ?string $host = null,
         public ?int $port = null,
         public ?string $password = null,
-    ) {
-    }
+    ) {}
 }

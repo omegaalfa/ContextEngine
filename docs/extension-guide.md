@@ -71,7 +71,7 @@ Garanta cardinalidade, ordem, dimensão e espaço. O provider não controla conc
 
 ## Gemini ou outro fornecedor
 
-Não existe adapter Gemini incluído. Uma integração externa deve implementar `EmbeddingProvider`, `LanguageModel` e/ou `StreamingLanguageModel`, apenas conforme as capacidades reais do transporte.
+`GeminiLanguageModel` já está incluído para respostas completas buffered. Para embeddings Gemini, Anthropic, gateways corporativos ou qualquer outro fornecedor, uma integração externa deve implementar `EmbeddingProvider`, `LanguageModel` e/ou `StreamingLanguageModel`, apenas conforme as capacidades reais do transporte.
 
 O adapter fica responsável por:
 

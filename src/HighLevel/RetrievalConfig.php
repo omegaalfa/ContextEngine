@@ -12,6 +12,6 @@ final readonly class RetrievalConfig
         public ?int $fusedLimit = null,
         public ?int $contextChunkLimit = null,
         public ?float $maximumDistance = null,
-    ) {
-    }
+        public ?bool $hybridSearch = null,
+    ) {}
 }

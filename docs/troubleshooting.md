@@ -10,7 +10,7 @@
 | 401/403 OpenAI | API key inválida | confirme secret e não registre Authorization em logs |
 | cardinalidade diferente | provider não devolveu um vetor por texto | corrija implementação; o executor/pipeline rejeita o lote |
 | modelo Ollama ausente | modelo não foi baixado | confira modelos locais e o nome passado ao construtor |
-| streaming não suportado | nenhum provider incremental configurado | use `ask()` ou implemente transporte incremental real |
+| streaming não suportado | provider atual não implementa streaming incremental | use `OpenAILanguageModel::stream()` ou `ask()` |
 | integração em skip | flag opt-in ausente | defina `CONTEXT_ENGINE_RUN_PGVECTOR_TESTS=1` ou Redis equivalente |
 | fingerprint mudou | revisão/parâmetro semântico mudou | compare provider/model/dimensions/revision/parameters |
 | retrieval vazio | tenant, collection, status ou espaço divergente | inspecione o escopo e confirme dados com os mesmos campos |
@@ -32,4 +32,4 @@ um FiberEventLoop
 
 Um `AsyncHttpClient()` com loop implícito e um executor com outro loop não compartilham o mesmo scheduler. Veja a montagem completa em [Concorrência e backpressure](concurrency.md).
 
-Para distinguir erro de configuração de recurso ainda ausente, consulte [Limitações e escopo](limitations.md). Gemini, LLM Ollama, busca híbrida e reranking não possuem implementação nativa no estado atual.
+Para distinguir erro de configuração de recurso ainda ausente, consulte [Limitações e escopo](limitations.md). `OpenAILanguageModel` já oferece streaming incremental real; LLMs Ollama e Gemini seguem buffered. Embeddings Gemini e reranking ainda exigem implementação externa.

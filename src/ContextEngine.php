@@ -13,8 +13,9 @@ use Omegaalfa\ContextEngine\Bootstrap\ContextEngineConfig;
 use Omegaalfa\ContextEngine\Bootstrap\ContextEngineConfigFactory;
 use Omegaalfa\ContextEngine\Bootstrap\ContextEngineContext;
 use Omegaalfa\ContextEngine\Contract\DocumentLoader;
+use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
-use Omegaalfa\ContextEngine\HighLevel\IngestionConfig;
+use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\HighLevel\IngestionConfig as HighLevelIngestionConfig;
 use Omegaalfa\ContextEngine\HighLevel\ProviderConfig;
 use Omegaalfa\ContextEngine\HighLevel\RedisConfig;
@@ -23,7 +24,6 @@ use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Ingestion\IngestionReport;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
-use Omegaalfa\ContextEngine\Provider\Ollama\OllamaEmbeddingProvider;
 use Omegaalfa\ContextEngine\Provider\Ollama\OllamaLanguageModel;
 use Omegaalfa\ContextEngine\Provider\OpenAI\OpenAIEmbeddingProvider;
 use Omegaalfa\ContextEngine\Provider\OpenAI\OpenAILanguageModel;
@@ -36,7 +36,6 @@ use Omegaalfa\ContextEngine\Retrieval\ContextRelevancePolicy;
 use Omegaalfa\ContextEngine\Retrieval\HeuristicQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\IdentityQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
-use Omegaalfa\ContextEngine\Retrieval\RetrievalOutcome;
 use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
@@ -134,6 +133,21 @@ final class ContextEngine
         return $this;
     }
 
+    public function openAiLanguageModel(
+        string $apiKey,
+        string $model = 'gpt-4.1-mini',
+        string $baseUrl = 'https://api.openai.com/v1',
+    ): self {
+        $this->overrides['openAiLanguageModel'] = new ProviderConfig(
+            provider: 'openai',
+            apiKey: $apiKey,
+            model: $model,
+            baseUrl: $baseUrl,
+        );
+
+        return $this;
+    }
+
     public function ingestion(
         ?int $batchSize = null,
         ?int $concurrency = null,
@@ -156,6 +170,7 @@ final class ContextEngine
         ?int $fusedLimit = null,
         ?int $contextChunkLimit = null,
         ?float $maximumDistance = null,
+        ?bool $hybridSearch = null,
     ): self {
         $this->overrides['retrieval'] = new RetrievalConfig(
             heuristicQueryPlanning: $heuristicQueryPlanning,
@@ -163,6 +178,7 @@ final class ContextEngine
             fusedLimit: $fusedLimit,
             contextChunkLimit: $contextChunkLimit,
             maximumDistance: $maximumDistance,
+            hybridSearch: $hybridSearch,
         );
 
         return $this;
@@ -204,6 +220,12 @@ final class ContextEngine
         return $this->context()->rag->ask($question, $tenantId);
     }
 
+    /** @return iterable<\Omegaalfa\ContextEngine\Rag\AnswerDelta> */
+    public function stream(Question|string $question, ?string $tenantId = null): iterable
+    {
+        return $this->context()->rag->stream($question, $tenantId);
+    }
+
     /** @return list<VectorSearchResult> */
     public function searchWithDiagnostics(Question|string $question, ?string $tenantId = null): array
     {
@@ -242,6 +264,26 @@ final class ContextEngine
 
     private function defaultLanguageModelFactory(ContextEngineConfig $config): Closure
     {
+        $providerConfig = $this->providerConfig();
+        $openAiLanguageModel = $this->openAiLanguageModelConfig();
+
+        if ($providerConfig?->provider === 'openai' || $openAiLanguageModel instanceof ProviderConfig) {
+            $apiKey = ($openAiLanguageModel instanceof ProviderConfig ? $openAiLanguageModel->apiKey : null)
+                ?? $providerConfig->apiKey
+                ?? throw new InvalidArgumentException('OpenAI API key is required for OpenAI language model composition.');
+            $model = ($openAiLanguageModel instanceof ProviderConfig ? $openAiLanguageModel->model : null) ?? 'gpt-4.1-mini';
+            $baseUrl = ($openAiLanguageModel instanceof ProviderConfig ? $openAiLanguageModel->baseUrl : null)
+                ?? $providerConfig->baseUrl
+                ?? 'https://api.openai.com/v1';
+
+            return static fn (AsyncHttpClient $http): LanguageModel => new OpenAILanguageModel(
+                apiKey: $apiKey,
+                model: $model,
+                client: $http,
+                baseUrl: $baseUrl,
+            );
+        }
+
         return static function (AsyncHttpClient $http) use ($config): LanguageModel {
             return new OllamaLanguageModel(
                 model: $config->ollama->model,
@@ -303,6 +345,7 @@ final class ContextEngine
                     preferSameDocument: $config->contextPreferSameDocument,
                 )
                 : null,
+            lexicalStore: self::resolveLexicalStore($store, $config->hybridSearch),
         );
         $ingestion = new IngestionPipeline(
             splitter: new RecursiveTextSplitter(
@@ -319,6 +362,7 @@ final class ContextEngine
             retriever: $retriever,
             prompts: new ContextPromptBuilder(),
             model: $languageModel,
+            streamingModel: $languageModel instanceof StreamingLanguageModel ? $languageModel : null,
             noEvidencePolicy: new FixedNoEvidencePolicy($config->noEvidenceMessage),
         );
 
@@ -361,6 +405,7 @@ final class ContextEngine
         $fusedLimit = $retrievalConfig !== null && $retrievalConfig->fusedLimit !== null ? $retrievalConfig->fusedLimit : $base->fusedLimit;
         $contextChunkLimit = $retrievalConfig !== null && $retrievalConfig->contextChunkLimit !== null ? $retrievalConfig->contextChunkLimit : $base->contextChunkLimit;
         $maximumDistance = $retrievalConfig !== null && $retrievalConfig->maximumDistance !== null ? $retrievalConfig->maximumDistance : $base->maximumDistance;
+        $hybridSearch = $retrievalConfig !== null && $retrievalConfig->hybridSearch !== null ? $retrievalConfig->hybridSearch : $base->hybridSearch;
 
         return new ContextEngineConfig(
             database: $database,
@@ -385,23 +430,39 @@ final class ContextEngine
             contextMinimumSources: $base->contextMinimumSources,
             contextMaximumSources: $base->contextMaximumSources,
             contextPreferSameDocument: $base->contextPreferSameDocument,
+            hybridSearch: $hybridSearch,
             noEvidenceMessage: $base->noEvidenceMessage,
         );
     }
 
     private function providerConfig(): ?ProviderConfig
     {
-        return $this->overrides['provider'] instanceof ProviderConfig ? $this->overrides['provider'] : null;
+        $provider = $this->overrides['provider'] ?? null;
+
+        return $provider instanceof ProviderConfig ? $provider : null;
     }
 
     private function ingestionConfig(): ?HighLevelIngestionConfig
     {
-        return $this->overrides['ingestion'] instanceof HighLevelIngestionConfig ? $this->overrides['ingestion'] : null;
+        $ingestion = $this->overrides['ingestion'] ?? null;
+
+        return $ingestion instanceof HighLevelIngestionConfig ? $ingestion : null;
     }
 
     private function retrievalConfig(): ?RetrievalConfig
     {
-        return $this->overrides['retrieval'] instanceof RetrievalConfig ? $this->overrides['retrieval'] : null;
+        $retrieval = $this->overrides['retrieval'] ?? null;
+
+        return $retrieval instanceof RetrievalConfig ? $retrieval : null;
+    }
+
+    private function openAiLanguageModelConfig(): ?ProviderConfig
+    {
+        $openAiLanguageModel = $this->overrides['openAiLanguageModel'] ?? null;
+
+        return $openAiLanguageModel instanceof ProviderConfig
+            ? $openAiLanguageModel
+            : null;
     }
 
     private function question(Question|string $question, ?string $tenantId): Question
@@ -413,5 +474,17 @@ final class ContextEngine
             throw new InvalidArgumentException('tenantId is required when question is a string.');
         }
         return new Question($question, $tenantId);
+    }
+
+    private static function resolveLexicalStore(object $store, bool $hybridSearch): ?LexicalSearchStore
+    {
+        if (!$hybridSearch) {
+            return null;
+        }
+        if (!$store instanceof LexicalSearchStore) {
+            throw new InvalidArgumentException('Hybrid search requires a vector store that implements LexicalSearchStore.');
+        }
+
+        return $store;
     }
 }

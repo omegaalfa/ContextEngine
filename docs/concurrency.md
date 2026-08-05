@@ -33,6 +33,14 @@ O argumento real chama-se `concurrency`, não `window`. Deve ser positivo. O exe
 
 Após falha, a janela é drenada e resultados posteriores descartados. O executor não conhece banco; o pipeline persiste cada resultado serialmente.
 
+Trade-off importante de custo:
+
+- se um lote falha em persistência, lotes da mesma janela que já iniciaram chamadas HTTP continuam até concluir;
+- esses tokens/requests ainda podem ser cobrados pelo provider, mesmo quando o resultado final da janela será descartado;
+- aumentar `concurrency` reduz latência média em cenário saudável, mas aumenta custo potencial sob falha parcial.
+
+Escolha `concurrency` considerando esse equilíbrio custo x throughput para sua carga real.
+
 - Janela 1: menor pressão e memória, menor paralelismo.
 - Janela 5: equilíbrio inicial razoável, sujeito ao provider.
 - Janela 20: maior memória, conexões e risco de rate limit.

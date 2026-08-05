@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Bootstrap;
 
 use Closure;
+use InvalidArgumentException;
+use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
+use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
@@ -85,6 +88,7 @@ final class Bootstrap
                     preferSameDocument: $config->contextPreferSameDocument,
                 )
                 : null,
+            lexicalStore: self::resolveLexicalStore($store, $config->hybridSearch),
         );
         $ingestion = new IngestionPipeline(
             splitter: new RecursiveTextSplitter(
@@ -102,6 +106,7 @@ final class Bootstrap
             retriever: $retriever,
             prompts: new ContextPromptBuilder(),
             model: $languageModel,
+            streamingModel: $languageModel instanceof StreamingLanguageModel ? $languageModel : null,
             noEvidencePolicy: new FixedNoEvidencePolicy($config->noEvidenceMessage),
         );
 
@@ -112,5 +117,17 @@ final class Bootstrap
             embeddings: $embeddings,
             store: $store,
         );
+    }
+
+    private static function resolveLexicalStore(object $store, bool $hybridSearch): ?LexicalSearchStore
+    {
+        if (!$hybridSearch) {
+            return null;
+        }
+        if (!$store instanceof LexicalSearchStore) {
+            throw new InvalidArgumentException('Hybrid search requires a vector store that implements LexicalSearchStore.');
+        }
+
+        return $store;
     }
 }

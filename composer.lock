@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "2b6d2f87d9f0058ec6fb4ee0810b41c6",
+    "content-hash": "3e1f575b4b881a7e502ccda0b44a0d7f",
     "packages": [
         {
             "name": "brick/math",
@@ -915,21 +915,21 @@
         },
         {
             "name": "omegaalfa/http-client",
-            "version": "v1.0.1",
+            "version": "v1.0.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/omegaalfa/HttpClient.git",
-                "reference": "02fac7822685b20e8c0a9918cb36a3c68f66eb95"
+                "reference": "947eff848aeb1d64de43af4ac4d0253122832241"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/omegaalfa/HttpClient/zipball/02fac7822685b20e8c0a9918cb36a3c68f66eb95",
-                "reference": "02fac7822685b20e8c0a9918cb36a3c68f66eb95",
+                "url": "https://api.github.com/repos/omegaalfa/HttpClient/zipball/947eff848aeb1d64de43af4ac4d0253122832241",
+                "reference": "947eff848aeb1d64de43af4ac4d0253122832241",
                 "shasum": ""
             },
             "require": {
                 "ext-sockets": "*",
-                "omegaalfa/fiber-event-loop": "v1.0.0",
+                "omegaalfa/fiber-event-loop": "^1.0",
                 "php": ">=8.4"
             },
             "require-dev": {
@@ -970,9 +970,9 @@
             ],
             "support": {
                 "issues": "https://github.com/omegaalfa/HttpClient/issues",
-                "source": "https://github.com/omegaalfa/HttpClient/tree/v1.0.1"
+                "source": "https://github.com/omegaalfa/HttpClient/tree/v1.0.2"
             },
-            "time": "2026-08-01T13:26:13+00:00"
+            "time": "2026-08-05T05:01:59+00:00"
         },
         {
             "name": "omegaalfa/query-builder",

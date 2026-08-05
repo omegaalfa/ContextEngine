@@ -33,6 +33,7 @@ final class BootstrapConfigTest extends TestCase
             contextMinimumSources: 2,
             contextMaximumSources: 4,
             contextPreferSameDocument: false,
+            hybridSearch: true,
         );
 
         self::assertSame('financeiro', $config->collection);
@@ -43,6 +44,7 @@ final class BootstrapConfigTest extends TestCase
         self::assertSame(2, $config->contextMinimumSources);
         self::assertSame(4, $config->contextMaximumSources);
         self::assertFalse($config->contextPreferSameDocument);
+        self::assertTrue($config->hybridSearch);
     }
 
     #[DataProvider('invalidConfigurationProvider')]
