@@ -6,10 +6,11 @@ namespace Omegaalfa\ContextEngine\Bootstrap;
 
 use Closure;
 use InvalidArgumentException;
-use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
+use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
+use Omegaalfa\ContextEngine\Ingestion\Chunking\CharacterLimitStrategy;
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
 use Omegaalfa\ContextEngine\Provider\Ollama\OllamaEmbeddingProvider;
@@ -21,7 +22,7 @@ use Omegaalfa\ContextEngine\Retrieval\IdentityQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
 use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
-use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
+use Omegaalfa\ContextEngine\Splitter\StructuralTextSplitter;
 use Omegaalfa\ContextEngine\VectorStore\PgVectorStore;
 use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
@@ -91,10 +92,7 @@ final class Bootstrap
             lexicalStore: self::resolveLexicalStore($store, $config->hybridSearch),
         );
         $ingestion = new IngestionPipeline(
-            splitter: new RecursiveTextSplitter(
-                chunkSize: $config->chunkSize,
-                overlap: $config->overlap,
-            ),
+            splitter: new StructuralTextSplitter(new CharacterLimitStrategy($config->chunkSize)),
             embeddings: $embeddings,
             store: $store,
             executor: $executor,

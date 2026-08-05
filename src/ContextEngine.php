@@ -13,14 +13,15 @@ use Omegaalfa\ContextEngine\Bootstrap\ContextEngineConfig;
 use Omegaalfa\ContextEngine\Bootstrap\ContextEngineConfigFactory;
 use Omegaalfa\ContextEngine\Bootstrap\ContextEngineContext;
 use Omegaalfa\ContextEngine\Contract\DocumentLoader;
-use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
+use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\HighLevel\IngestionConfig as HighLevelIngestionConfig;
 use Omegaalfa\ContextEngine\HighLevel\ProviderConfig;
 use Omegaalfa\ContextEngine\HighLevel\RedisConfig;
 use Omegaalfa\ContextEngine\HighLevel\RetrievalConfig;
 use Omegaalfa\ContextEngine\Infrastructure\Ingestion\FiberBatchEmbeddingExecutor;
+use Omegaalfa\ContextEngine\Ingestion\Chunking\CharacterLimitStrategy;
 use Omegaalfa\ContextEngine\Ingestion\IngestionPipeline;
 use Omegaalfa\ContextEngine\Ingestion\IngestionReport;
 use Omegaalfa\ContextEngine\Prompt\ContextPromptBuilder;
@@ -39,7 +40,7 @@ use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
 use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchResult;
-use Omegaalfa\ContextEngine\Splitter\RecursiveTextSplitter;
+use Omegaalfa\ContextEngine\Splitter\StructuralTextSplitter;
 use Omegaalfa\ContextEngine\VectorStore\PgVectorStore;
 use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
@@ -348,10 +349,7 @@ final class ContextEngine
             lexicalStore: self::resolveLexicalStore($store, $config->hybridSearch),
         );
         $ingestion = new IngestionPipeline(
-            splitter: new RecursiveTextSplitter(
-                chunkSize: $config->chunkSize,
-                overlap: $config->overlap,
-            ),
+            splitter: new StructuralTextSplitter(new CharacterLimitStrategy($config->chunkSize)),
             embeddings: $embeddings,
             store: $store,
             executor: $executor,
