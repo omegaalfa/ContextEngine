@@ -1,42 +1,457 @@
-# Document parsing and structural chunking
+# 🧩 Parsing de documentos e chunking estrutural
 
-## Architecture
+> **Objetivo:** transformar documentos de formatos diferentes em uma árvore lógica comum antes de gerar chunks, embeddings e registros no vector store.
+
+Este guia explica a arquitetura de ingestão estrutural do ContextEngine, os formatos suportados, os metadados produzidos e os pontos de extensão. Para o ciclo de persistência, batching e tratamento de falhas, consulte também [Ingestão](ingestion.md).
+
+## 🗺️ Visão geral
+
+Antes desta arquitetura, o chunking operava principalmente sobre texto linear. Agora, o documento passa primeiro por uma etapa de interpretação estrutural:
 
 ```text
-DocumentLoader -> Document -> DocumentParser -> DocumentNode tree
-    -> ChunkBuilder -> Chunk -> EmbeddingProvider -> VectorStore
+┌──────────────────┐
+│ DocumentLoader   │  lê arquivo, PDF, API ou outra fonte
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│ Document         │  conteúdo bruto + tenant + collection + metadata
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│ DocumentParser   │  interpreta o formato; não cria chunks
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│ DocumentNode     │  árvore lógica, ordenada e imutável
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│ ChunkBuilder     │  preserva blocos, contexto e hierarquia
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│ Chunk[]          │  conteúdo + origem + posição + caminho estrutural
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│ EmbeddingProvider│
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│ VectorStore      │
+└──────────────────┘
 ```
 
-Reading, parsing, chunking, embedding, and persistence are independent. Existing callers keep using `ContextEngine::ingest(DocumentLoader $loader)`.
+### Responsabilidades
 
-## Document model
+| Etapa | Faz | Não faz |
+|---|---|---|
+| `DocumentLoader` | lê a fonte e cria `Document` | interpretar Markdown ou gerar embeddings |
+| `DocumentParser` | converte conteúdo bruto em nós lógicos | decidir tamanho de chunk |
+| `DocumentNode` | representa ordem, hierarquia, conteúdo e metadata | executar I/O ou alterar estado |
+| `ChunkBuilder` | percorre a árvore e cria chunks consistentes | ler arquivos ou chamar providers |
+| `ChunkingStrategy` | define quando um chunk atingiu seu limite | conhecer tenant, banco ou formato do arquivo |
+| `EmbeddingProvider` | transforma conteúdo em vetores | interpretar estrutura documental |
+| `VectorStore` | persiste e recupera versões vetoriais | fazer parsing ou chunking |
 
-Every parser returns an immutable `DocumentNode` containing ordered nodes. Supported node types are `SectionNode`, `HeadingNode`, `ParagraphNode`, `CodeBlockNode`, `TableNode`, `ListNode`, and `QuoteNode`. Nodes expose content, children, type, and scalar metadata.
+## 🌳 Modelo estrutural comum
 
-Chunk metadata includes `block_type`, `heading_parent`, `hierarchy_path`, `hierarchy_level`, `relative_position`, and the reserved `parent_id`. Original document metadata remains available.
+Todos os parsers produzem um `DocumentNode`. Seus filhos implementam o contrato `Node` e formam uma árvore imutável.
 
-## Parsers
+```text
+DocumentNode
+├── HeadingNode     "Manual da API"
+├── ParagraphNode   "Este documento descreve..."
+├── SectionNode     "Autenticação"
+│   ├── ParagraphNode
+│   ├── CodeBlockNode  language=php
+│   └── ListNode
+├── SectionNode     "Respostas"
+│   ├── TableNode
+│   └── QuoteNode
+└── SectionNode     "Erros"
+```
 
-`ParserRegistry` checks `metadata.format`, then `metadata.type`, then the extension in `metadata.source`. It supports plain text, Markdown, HTML, JSON, XML, and PHP. PDF text produced by the existing loader uses the plain-text parser while retaining page metadata.
+### Tipos de nó
 
-To add a parser, implement `DocumentParser`, build only logical nodes, register the format in `ParserRegistry`, and keep parsing deterministic without network or AI calls.
+| Nó | Representa | Exemplos de metadata |
+|---|---|---|
+| `DocumentNode` | raiz do documento | formato, origem, versão |
+| `SectionNode` | agrupamento hierárquico | segmento do caminho |
+| `HeadingNode` | título ou subtítulo | `level` |
+| `ParagraphNode` | texto corrido | chave de origem em JSON/XML |
+| `CodeBlockNode` | código-fonte ou bloco cercado | `language`, `symbol_type` |
+| `TableNode` | tabela preservada como unidade | informações fornecidas pelo parser |
+| `ListNode` | lista ordenada ou não ordenada | `ordered` |
+| `QuoteNode` | citação ou bloco destacado | metadata da origem |
 
-## Chunking
+Cada nó expõe:
 
-`ChunkBuilder` walks the tree in source order, tracks headings and sections, and combines complete blocks while the strategy accepts the candidate. Oversized blocks are split only as a fallback.
+```php
+interface Node
+{
+    public function type(): string;
+    public function content(): string;
 
-- `CharacterLimitStrategy`: maximum UTF-8 character count.
-- `TokenLimitStrategy`: maximum estimated tokens with a replaceable `TokenEstimator`.
-- `BlockLimitStrategy`: maximum logical block count.
+    /** @return list<Node> */
+    public function children(): array;
 
-New strategies implement `ChunkingStrategy`. Their fingerprint must change whenever output-affecting behavior changes because document version identity uses it.
+    /** @return array<string, scalar|null> */
+    public function metadata(): array;
+}
+```
+
+Os arrays são tratados como listas ordenadas. Parsers não podem reorganizar blocos, misturar responsabilidades ou depender de IA.
+
+## 📄 Formatos suportados
+
+O `ParserRegistry` seleciona o parser usando esta precedência:
+
+```text
+metadata.format
+      ↓ ausente
+metadata.type
+      ↓ ausente
+extensão de metadata.source
+      ↓ desconhecida
+PlainTextParser
+```
+
+| Formato | Parser | Estruturas reconhecidas |
+|---|---|---|
+| Texto simples | `PlainTextParser` | parágrafos separados por linhas vazias |
+| Markdown | `MarkdownParser` | headings, parágrafos, listas, citações e blocos de código |
+| HTML | `HtmlParser` | `h1`–`h6`, `p`, `pre`, `code`, `blockquote`, listas e tabelas |
+| JSON | `JsonParser` | objetos e arrays como seções hierárquicas; escalares como parágrafos |
+| XML | `XmlParser` | elementos como seções aninhadas e conteúdo textual como parágrafos |
+| PHP | `PhpParser` | classes, interfaces, traits, enums, funções e métodos quando detectáveis |
+| PDF | `PdfParser` | headings, parágrafos, listas, tabelas e código por heurísticas determinísticas; páginas como metadata |
+
+### Exemplo de seleção
+
+```php
+use Omegaalfa\ContextEngine\Document\Document;
+use Omegaalfa\ContextEngine\Ingestion\Parser\ParserRegistry;
+
+$document = new Document(
+    id: 'manual-api-v3',
+    tenantId: 'tenant-42',
+    content: "# Autenticação\n\nUse um token Bearer.",
+    metadata: [
+        'format' => 'markdown',
+        'source' => '/docs/manual-api.md',
+        'version' => '3',
+    ],
+    collection: 'developer-docs',
+);
+
+$registry = new ParserRegistry();
+$parser = $registry->parserFor($document);
+$tree = $parser->parse($document);
+```
+
+> **Importante:** metadata explícita vence a extensão. Isso permite processar conteúdo Markdown vindo de banco, fila ou API, mesmo quando não existe arquivo físico.
+
+### PDFs não são divididos por página
+
+O `PdfDocumentLoader` preserva marcadores de página no conteúdo extraído. O `PdfParser` usa esses marcadores apenas para atribuir `page_start` e `page_end` aos nós. O `ChunkBuilder` pode combinar conteúdo de páginas consecutivas quando pertence à mesma unidade lógica.
+
+```text
+Página 102                     Página 103
+┌────────────────────┐         ┌────────────────────┐
+│ Capítulo 5         │         │ continuação        │
+│ explicação inicial │────────→│ da explicação      │
+└────────────────────┘         └────────────────────┘
+             ↓ parsing + chunking estrutural
+┌───────────────────────────────────────────────────┐
+│ Chunk: Capítulo 5                                 │
+│ page_start: 102                                   │
+│ page_end: 103                                     │
+└───────────────────────────────────────────────────┘
+```
+
+Para livros, configure o loader para produzir um documento lógico único. O exemplo executável usa `pagesPerDocument: PHP_INT_MAX`; headings e limites da estratégia determinam os chunks, não janelas físicas de páginas.
+
+## ✂️ Como o ChunkBuilder trabalha
+
+O `ChunkBuilder` percorre a árvore em ordem de origem e mantém o caminho hierárquico ativo. Ele tenta combinar blocos completos enquanto a estratégia permite.
+
+```text
+Heading: "Autenticação"
+Paragraph: "A API usa Bearer Token."
+CodeBlock: "Authorization: Bearer ..."
+Heading: "Erros"
+Paragraph: "Tokens expirados retornam 401."
+
+                    ↓ limite de 120 caracteres
+
+Chunk 0
+├── heading_parent: Autenticação
+├── block_type: heading
+└── Autenticação + parágrafo
+
+Chunk 1
+├── heading_parent: Autenticação
+├── block_type: code
+└── bloco de código completo
+
+Chunk 2
+├── heading_parent: Erros
+├── block_type: heading
+└── Erros + parágrafo
+```
+
+### Regras de corte
+
+1. preserva a ordem original;
+2. prefere limites naturais entre nós;
+3. mantém blocos de código, listas e tabelas inteiros quando couberem;
+4. combina blocos pequenos para evitar chunks fragmentados;
+5. divide um bloco internamente somente quando ele excede sozinho o limite;
+6. gera posições sequenciais e IDs determinísticos.
+
+## ⚙️ Estratégias de chunking
+
+As estratégias implementam `ChunkingStrategy`:
+
+```php
+interface ChunkingStrategy
+{
+    public function fingerprint(): string;
+    public function fits(string $content, int $blockCount): bool;
+
+    /** @return list<string> */
+    public function split(string $content): array;
+}
+```
+
+### Por caracteres
+
+```php
+use Omegaalfa\ContextEngine\Ingestion\Chunking\CharacterLimitStrategy;
+use Omegaalfa\ContextEngine\Splitter\StructuralTextSplitter;
+
+$splitter = new StructuralTextSplitter(
+    new CharacterLimitStrategy(limit: 1_200),
+);
+```
+
+`CharacterLimitStrategy` mede caracteres UTF-8. Ao dividir um bloco grande, tenta cortar em quebra de linha ou espaço antes de usar o limite rígido.
+
+### Por tokens estimados
 
 ```php
 use Omegaalfa\ContextEngine\Ingestion\Chunking\TokenLimitStrategy;
 use Omegaalfa\ContextEngine\Splitter\StructuralTextSplitter;
 
-$splitter = new StructuralTextSplitter(new TokenLimitStrategy(256));
-$chunks = $splitter->split($document);
+$splitter = new StructuralTextSplitter(
+    new TokenLimitStrategy(limit: 256),
+);
 ```
 
-The old `RecursiveTextSplitter` remains public for applications that instantiate it directly. Retrieval and storage contracts are unchanged.
+Por padrão, `HeuristicTokenEstimator` estima um token a cada quatro caracteres. A estimativa é rápida, local e determinística. Aplicações podem injetar outro `TokenEstimator` sem alterar o builder.
+
+### Por blocos estruturais
+
+```php
+use Omegaalfa\ContextEngine\Ingestion\Chunking\BlockLimitStrategy;
+
+$strategy = new BlockLimitStrategy(limit: 3);
+```
+
+Essa estratégia limita quantos nós lógicos podem compor um chunk, independentemente do tamanho textual.
+
+### Fingerprint e versionamento
+
+O fingerprint da estratégia participa da identidade da versão documental. Altere-o sempre que uma mudança puder produzir chunks diferentes:
+
+```text
+mesmo documento + mesmo embedding space + fingerprint diferente
+                         ↓
+                 nova versão de ingestão
+```
+
+Isso evita misturar chunks produzidos por algoritmos incompatíveis.
+
+## 🏷️ Metadados dos chunks
+
+Cada chunk herda a metadata do `Document` e recebe contexto estrutural adicional.
+
+| Chave | Significado |
+|---|---|
+| `block_type` | tipo do bloco que originou o chunk |
+| `heading_parent` | heading ou seção mais próxima |
+| `hierarchy_path` | caminho legível, como `Manual > API > Erros` |
+| `hierarchy_level` | profundidade lógica do chunk |
+| `relative_position` | posição do bloco na árvore linearizada |
+| `parent_id` | reservado para parent/child retrieval; atualmente `null` |
+| `language` | linguagem de código quando conhecida |
+| `symbol_type` | classe, interface, trait, enum ou função em código PHP |
+| `source` | arquivo ou identificador de origem |
+| `version` | versão fornecida pela aplicação |
+| `page_start` / `page_end` | intervalo de páginas quando disponível |
+
+Exemplo simplificado:
+
+```php
+[
+    'source' => '/docs/manual.md',
+    'version' => '3',
+    'block_type' => 'code',
+    'heading_parent' => 'Autenticação',
+    'hierarchy_path' => 'Manual da API > Autenticação',
+    'hierarchy_level' => 2,
+    'relative_position' => 7,
+    'language' => 'php',
+    'parent_id' => null,
+]
+```
+
+Tenant, collection, status, documento e posição continuam disponíveis nos campos próprios de `Chunk`; não precisam ser duplicados na metadata.
+
+## 🔌 Criando um novo parser
+
+Suponha um formato `.ini` em que cada seção deve virar um `SectionNode`.
+
+### 1. Implemente o contrato
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Context\Parser;
+
+use Omegaalfa\ContextEngine\Document\Document;
+use Omegaalfa\ContextEngine\Ingestion\DocumentModel\DocumentNode;
+use Omegaalfa\ContextEngine\Ingestion\DocumentModel\ParagraphNode;
+use Omegaalfa\ContextEngine\Ingestion\DocumentModel\SectionNode;
+use Omegaalfa\ContextEngine\Ingestion\Parser\DocumentParser;
+
+final readonly class IniParser implements DocumentParser
+{
+    public function parse(Document $document): DocumentNode
+    {
+        $data = parse_ini_string($document->content, true, INI_SCANNER_RAW);
+        $sections = [];
+
+        foreach ($data ?: [] as $name => $values) {
+            $lines = [];
+
+            foreach ((array) $values as $key => $value) {
+                $lines[] = new ParagraphNode("{$key}={$value}");
+            }
+
+            $sections[] = new SectionNode((string) $name, $lines);
+        }
+
+        return new DocumentNode($sections, $document->metadata);
+    }
+}
+```
+
+### 2. Registre o formato
+
+Adicione o formato ao `ParserRegistry` ou forneça um registry especializado à composição da aplicação. O parser deve apenas construir a árvore.
+
+### 3. Teste estes invariantes
+
+- a ordem dos blocos é preservada;
+- a hierarquia representa o documento original;
+- conteúdo vazio não gera nós inúteis;
+- metadata relevante não é perdida;
+- entrada inválida produz erro explícito;
+- o parser não cria chunks, embeddings ou efeitos externos.
+
+## 🧱 Criando uma nova estratégia
+
+Uma estratégia por bytes, sentenças ou custo de modelo deve implementar três operações:
+
+```php
+final readonly class SentenceLimitStrategy implements ChunkingStrategy
+{
+    public function __construct(private int $limit) {}
+
+    public function fingerprint(): string
+    {
+        return 'sentences:v1:' . $this->limit;
+    }
+
+    public function fits(string $content, int $blockCount): bool
+    {
+        return preg_match_all('/[.!?]+(?:\s|$)/u', $content) <= $this->limit;
+    }
+
+    public function split(string $content): array
+    {
+        return preg_split('/(?<=[.!?])\s+/u', trim($content)) ?: [];
+    }
+}
+```
+
+Uma estratégia não deve conhecer `Document`, formato, provider ou banco. Ela recebe apenas o conteúdo candidato e a quantidade de blocos.
+
+## 🔄 Compatibilidade com a API existente
+
+O uso público permanece igual:
+
+```php
+$report = $engine->ingest($loader);
+```
+
+A composição padrão usa `StructuralTextSplitter` internamente. Aplicações que instanciam `RecursiveTextSplitter` diretamente continuam podendo usá-lo; retrieval, embeddings e contratos do vector store não foram alterados.
+
+```text
+API pública antiga                    Implementação atual
+────────────────────────────────────────────────────────────
+ContextEngine::ingest(loader)   ───→  IngestionPipeline
+                                      ↓
+                                 TextSplitter
+                                      ↓
+                              parsing + chunking estrutural
+```
+
+## 🧪 Cobertura recomendada
+
+Ao evoluir essa área, cubra pelo menos:
+
+- parsing de Markdown, HTML, JSON, XML e PHP;
+- ordem e hierarquia dos nós;
+- blocos de código, listas, tabelas e citações;
+- limites por caracteres, tokens e blocos;
+- divisão de um único bloco maior que o limite;
+- propagação da metadata original;
+- `heading_parent`, `hierarchy_path` e posições;
+- estabilidade do fingerprint;
+- compatibilidade de `ContextEngine::ingest()`.
+
+Comandos úteis:
+
+```bash
+composer test -- tests/Unit/DocumentParsingTest.php
+composer analyse
+composer style
+```
+
+## 🚧 Limites atuais
+
+Esta etapa é propositalmente determinística e não implementa:
+
+- OCR;
+- extração ou descrição de imagens;
+- interpretação semântica de tabelas;
+- resumo automático;
+- IA durante o parsing;
+- parent/child retrieval;
+- descrição automática de figuras.
+
+A presença de `parent_id`, níveis e posições prepara a evolução futura sem antecipar comportamento no retrieval.
+
+## 🔗 Leitura relacionada
+
+- [Exemplos executáveis](../examples/structural-ingestion/README.md) — parsing, chunking, ingestão, busca e comparação de estratégias pela linha de comando.
+- [Ingestão](ingestion.md) — batching, embeddings, persistência e falhas parciais.
+- [Documentos e splitters](documents-and-splitting.md) — contratos públicos de entrada e divisão.
+- [Arquitetura](architecture.md) — fronteiras completas do ContextEngine.
+- [Embeddings](embeddings.md) — identidade do espaço vetorial.
+- [Extensão](extension-guide.md) — princípios para novos adapters e componentes.

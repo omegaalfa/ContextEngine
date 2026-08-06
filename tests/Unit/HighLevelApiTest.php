@@ -11,6 +11,7 @@ use Omegaalfa\ContextEngine\Exception\StreamingNotSupportedException;
 use Omegaalfa\ContextEngine\Contract\DocumentLoader;
 use Omegaalfa\ContextEngine\Ingestion\IngestionReport;
 use Omegaalfa\ContextEngine\Provider\OpenAI\OpenAILanguageModel;
+use Omegaalfa\ContextEngine\Provider\Ollama\OllamaLanguageModel;
 use Omegaalfa\ContextEngine\Rag\Answer;
 use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Rag\RagExecution;
@@ -35,9 +36,9 @@ final class HighLevelApiTest extends TestCase
         $this->assertInstanceOf(ContextEngineContext::class, $engine);
     }
 
-    public function testFromEnvironmentBuildsAndAllowsFluentOverrides(): void
+    public function testCreateReadsEnvironmentAndAllowsFluentOverrides(): void
     {
-        $engine = ContextEngine::fromEnvironment()
+        $engine = ContextEngine::create()
             ->tenant('override-tenant')
             ->collection('override-collection')
             ->status('active')
@@ -48,7 +49,7 @@ final class HighLevelApiTest extends TestCase
 
     public function testFluentOverridesTakePrecedenceOverEnvironmentConfig(): void
     {
-        $engine = ContextEngine::fromEnvironment()
+        $engine = ContextEngine::create()
             ->tenant('tenant-a')
             ->collection('collection-a')
             ->status('active')
@@ -67,6 +68,24 @@ final class HighLevelApiTest extends TestCase
             ->build();
 
         $this->assertInstanceOf(ContextEngineContext::class, $engine);
+    }
+
+    public function testOllamaFluentCompositionUsesConfiguredLanguageModel(): void
+    {
+        $context = ContextEngine::create()
+            ->ollama(
+                baseUrl: 'http://127.0.0.1:11434',
+                embeddingModel: 'bge-m3',
+                languageModel: 'llama3.1:8b',
+            )
+            ->build();
+
+        $property = new \ReflectionProperty($context->rag, 'model');
+        /** @var object $model */
+        $model = $property->getValue($context->rag);
+
+        self::assertInstanceOf(OllamaLanguageModel::class, $model);
+        self::assertSame('llama3.1:8b', $model->model);
     }
 
     public function testOpenAiFluentCompositionUsesOpenAiLanguageModelByDefault(): void

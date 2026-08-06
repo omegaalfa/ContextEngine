@@ -15,7 +15,9 @@ final class ContextEngineConfigFactory
     /**
      *
      */
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 
     /**
      * Reads an environment already populated by the process or EnvLoader.
@@ -150,6 +152,7 @@ final class ContextEngineConfigFactory
 
         return $float;
     }
+
     private static function float(string $key, float $default): float
     {
         $value = EnvLoader::get($key);
@@ -159,7 +162,7 @@ final class ContextEngineConfigFactory
         if (!is_numeric($value)) {
             throw new InvalidArgumentException('Environment variable ' . $key . ' must be numeric.');
         }
-        $float = (float) $value;
+        $float = (float)$value;
         if (!is_finite($float)) {
             throw new InvalidArgumentException('Environment variable ' . $key . ' must be finite.');
         }

@@ -23,11 +23,18 @@ final readonly class ChunkBuilder
         $pendingBlocks = 0;
         $pendingMetadata = null;
         foreach ($blocks as $block) {
+            if ($pending !== '' && in_array($block['metadata']->blockType, ['heading', 'section'], true)) {
+                $this->append($chunks, $document, $pending, $pendingMetadata);
+                $pending = '';
+                $pendingBlocks = 0;
+                $pendingMetadata = null;
+            }
             $candidate = $pending === '' ? $block['content'] : $pending . "\n\n" . $block['content'];
             if ($pending !== '' && !$this->strategy->fits($candidate, $pendingBlocks + 1)) {
                 $this->append($chunks, $document, $pending, $pendingMetadata);
                 $pending = '';
                 $pendingBlocks = 0;
+                $pendingMetadata = null;
             }
             if (!$this->strategy->fits($block['content'], 1)) {
                 foreach ($this->strategy->split($block['content']) as $part) {
@@ -37,13 +44,35 @@ final readonly class ChunkBuilder
             }
             $pending = $pending === '' ? $block['content'] : $pending . "\n\n" . $block['content'];
             $pendingBlocks++;
-            $pendingMetadata ??= $block['metadata'];
+            $pendingMetadata = $pendingMetadata === null
+                ? $block['metadata']
+                : $this->mergeMetadata($pendingMetadata, $block['metadata']);
         }
         if ($pending !== '') {
             $this->append($chunks, $document, $pending, $pendingMetadata);
         }
 
         return $chunks;
+    }
+
+    private function mergeMetadata(ChunkMetadata $first, ChunkMetadata $last): ChunkMetadata
+    {
+        $source = array_merge($first->source, $last->source);
+        $firstPage = $first->source['page_start'] ?? null;
+        $lastPage = $last->source['page_end'] ?? null;
+        if (is_int($firstPage) && is_int($lastPage)) {
+            $source['page_start'] = min($firstPage, $lastPage);
+            $source['page_end'] = max($firstPage, $lastPage);
+        }
+
+        return new ChunkMetadata(
+            $first->blockType,
+            $first->hierarchy,
+            $first->level,
+            $first->relativePosition,
+            $source,
+            $first->parentId,
+        );
     }
 
     /**

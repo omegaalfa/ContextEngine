@@ -33,8 +33,14 @@ final readonly class ContextEngineContext
         public RagPipeline       $rag,
         public EmbeddingProvider $embeddings,
         public VectorStore       $store,
-    ) {}
+    )
+    {
+    }
 
+    /**
+     * @param DocumentLoader $loader
+     * @return IngestionReport
+     */
     public function ingest(DocumentLoader $loader): IngestionReport
     {
         return $this->ingestion->ingest($loader);
@@ -46,6 +52,12 @@ final readonly class ContextEngineContext
         return $this->retriever->retrieve($this->question($question, $tenantId));
     }
 
+    /**
+     * @param Question|string $question
+     * @param string|null $tenantId
+     * @return Answer
+     * @throws \JsonException
+     */
     public function ask(Question|string $question, ?string $tenantId = null): Answer
     {
         return $this->rag->ask($question, $tenantId);
@@ -63,11 +75,21 @@ final readonly class ContextEngineContext
         return $this->retriever->retrieveWithDiagnostics($this->question($question, $tenantId))->results;
     }
 
+    /**
+     * @param Question|string $question
+     * @param string|null $tenantId
+     * @return RagExecution
+     */
     public function askWithDiagnostics(Question|string $question, ?string $tenantId = null): RagExecution
     {
         return $this->rag->askWithDiagnostics($question, $tenantId);
     }
 
+    /**
+     * @param Question|string $question
+     * @param string|null $tenantId
+     * @return Question
+     */
     private function question(Question|string $question, ?string $tenantId): Question
     {
         if ($question instanceof Question) {

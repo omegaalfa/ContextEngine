@@ -7,7 +7,6 @@ namespace Omegaalfa\ContextEngine;
 use Closure;
 use InvalidArgumentException;
 use Omegaalfa\ContextEngine\Bootstrap\Bootstrap;
-use Omegaalfa\ContextEngine\Bootstrap\Config\DatabaseConfig;
 use Omegaalfa\ContextEngine\Bootstrap\Config\OllamaConfig;
 use Omegaalfa\ContextEngine\Bootstrap\ContextEngineConfig;
 use Omegaalfa\ContextEngine\Bootstrap\ContextEngineConfigFactory;
@@ -55,28 +54,12 @@ final class ContextEngine
 
     private function __construct(
         private ContextEngineConfig $config,
-        private ?Closure $languageModelFactory = null,
-    ) {}
-
-    public static function create(): self
+        private ?Closure            $languageModelFactory = null,
+    )
     {
-        return new self(new ContextEngineConfig(
-            database: new DatabaseConfig(
-                host: '127.0.0.1',
-                database: 'context_engine',
-                port: 54339,
-                username: 'context_engine',
-                password: 'context_engine',
-            ),
-            ollama: new OllamaConfig(
-                model: 'bge-m3',
-                dimensions: 1024,
-                baseUrl: 'http://127.0.0.1:11434',
-            ),
-        ));
     }
 
-    public static function fromEnvironment(): self
+    public static function create(): self
     {
         return new self(ContextEngineConfigFactory::fromEnvironment());
     }
@@ -106,8 +89,9 @@ final class ContextEngine
         string $baseUrl,
         string $embeddingModel,
         string $languageModel,
-        int $embeddingDimensions = 1024,
-    ): self {
+        int    $embeddingDimensions = 1024,
+    ): self
+    {
         $this->overrides['provider'] = new ProviderConfig(
             provider: 'ollama',
             baseUrl: $baseUrl,
@@ -123,7 +107,8 @@ final class ContextEngine
         string $apiKey,
         string $model,
         string $baseUrl = 'https://api.openai.com/v1',
-    ): self {
+    ): self
+    {
         $this->overrides['provider'] = new ProviderConfig(
             provider: 'openai',
             apiKey: $apiKey,
@@ -138,7 +123,8 @@ final class ContextEngine
         string $apiKey,
         string $model = 'gpt-4.1-mini',
         string $baseUrl = 'https://api.openai.com/v1',
-    ): self {
+    ): self
+    {
         $this->overrides['openAiLanguageModel'] = new ProviderConfig(
             provider: 'openai',
             apiKey: $apiKey,
@@ -154,7 +140,8 @@ final class ContextEngine
         ?int $concurrency = null,
         ?int $chunkSize = null,
         ?int $chunkOverlap = null,
-    ): self {
+    ): self
+    {
         $this->overrides['ingestion'] = new HighLevelIngestionConfig(
             batchSize: $batchSize,
             concurrency: $concurrency,
@@ -166,13 +153,14 @@ final class ContextEngine
     }
 
     public function retrieval(
-        ?bool $heuristicQueryPlanning = null,
-        ?int $retrievalLimit = null,
-        ?int $fusedLimit = null,
-        ?int $contextChunkLimit = null,
+        ?bool  $heuristicQueryPlanning = null,
+        ?int   $retrievalLimit = null,
+        ?int   $fusedLimit = null,
+        ?int   $contextChunkLimit = null,
         ?float $maximumDistance = null,
-        ?bool $hybridSearch = null,
-    ): self {
+        ?bool  $hybridSearch = null,
+    ): self
+    {
         $this->overrides['retrieval'] = new RetrievalConfig(
             heuristicQueryPlanning: $heuristicQueryPlanning,
             retrievalLimit: $retrievalLimit,
@@ -268,6 +256,17 @@ final class ContextEngine
         $providerConfig = $this->providerConfig();
         $openAiLanguageModel = $this->openAiLanguageModelConfig();
 
+        if ($providerConfig?->provider === 'ollama') {
+            $model = $providerConfig->languageModel ?? $config->ollama->model;
+            $baseUrl = $providerConfig->baseUrl ?? $config->ollama->baseUrl;
+
+            return static fn (AsyncHttpClient $http): LanguageModel => new OllamaLanguageModel(
+                model: $model,
+                client: $http,
+                baseUrl: $baseUrl,
+            );
+        }
+
         if ($providerConfig?->provider === 'openai' || $openAiLanguageModel instanceof ProviderConfig) {
             $apiKey = ($openAiLanguageModel instanceof ProviderConfig ? $openAiLanguageModel->apiKey : null)
                 ?? $providerConfig->apiKey
@@ -277,7 +276,7 @@ final class ContextEngine
                 ?? $providerConfig->baseUrl
                 ?? 'https://api.openai.com/v1';
 
-            return static fn (AsyncHttpClient $http): LanguageModel => new OpenAILanguageModel(
+            return static fn(AsyncHttpClient $http): LanguageModel => new OpenAILanguageModel(
                 apiKey: $apiKey,
                 model: $model,
                 client: $http,

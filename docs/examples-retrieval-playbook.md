@@ -1,8 +1,36 @@
-# Retrieval Examples Playbook
+# 🧪 Playbook de exemplos de retrieval
 
-This guide maps practical examples you can run directly to understand each retrieval stage and the difference between buffered and streaming answers.
+> Uma trilha prática para entender busca vetorial, busca lexical, fusão de rankings, expansão de contexto, diagnósticos e respostas RAG.
 
-All scripts are standalone and executable with plain PHP:
+Os exemplos desta página são independentes e podem ser executados diretamente com PHP. Eles usam componentes locais de demonstração, portanto são ideais para estudar o pipeline sem configurar banco, credenciais ou serviços externos.
+
+## 🗺️ Trilha recomendada
+
+```text
+01 Busca vetorial
+        ↓
+02 Busca lexical
+        ↓
+03 Planejamento de consultas
+        ↓
+04 Fusão RRF
+        ↓
+05 Expansão por vizinhos
+        ↓
+06 Busca híbrida
+        ↓
+07 Diagnósticos completos
+        ↓
+08 Pipeline RAG completo
+        ↓
+09 Resposta buffered  ───  10 Streaming
+```
+
+Se você está começando, execute os arquivos nessa ordem. Cada etapa adiciona apenas um conceito novo ao fluxo anterior.
+
+## ▶️ Executando todos os exemplos
+
+A partir da raiz do projeto:
 
 ```bash
 php examples/01-vector-search.php
@@ -17,85 +45,249 @@ php examples/09-ask.php
 php examples/10-stream.php
 ```
 
-Each script prints:
+Cada script apresenta:
 
-- stage-by-stage pipeline output;
-- execution time;
-- number of documents found;
-- number of selected chunks.
+- etapas executadas pelo pipeline;
+- chunks encontrados e sua ordenação;
+- tempo de execução;
+- quantidade de documentos encontrados;
+- quantidade de chunks selecionados.
 
-The examples use different question styles: conceptual queries, code-generation style prompts, identifiers such as `ERR_PAYMENT_1047`, SKUs, classes, and functions.
+As perguntas cobrem buscas conceituais, geração de código e identificadores exatos como `ERR_PAYMENT_1047`, SKUs, classes e funções.
 
-## 01-vector-search.php
+## 📋 Visão rápida
 
-Focus: vector search only.
+| Exemplo | Conceito principal | Use para entender |
+|---|---|---|
+| `01-vector-search.php` | similaridade vetorial | busca semântica |
+| `02-lexical-search.php` | correspondência textual | códigos, nomes e identificadores |
+| `03-multi-query.php` | reescrita heurística | perguntas decompostas em subconsultas |
+| `04-rrf.php` | Reciprocal Rank Fusion | combinação de rankings diferentes |
+| `05-context-expansion.php` | chunks vizinhos | recuperação do contexto ao redor |
+| `06-hybrid-search.php` | vetorial + lexical | equilíbrio entre significado e termos exatos |
+| `07-diagnostics.php` | observabilidade | decisões e tempos internos |
+| `08-end-to-end-rag.php` | pipeline completo | retrieval, prompt e modelo |
+| `09-ask.php` | resposta buffered | resultado completo em uma chamada |
+| `10-stream.php` | resposta incremental | consumo de deltas em tempo real |
 
-- Uses vector retrieval with lexical disabled.
-- Good for understanding semantic similarity ranking.
+## 1️⃣ Busca vetorial
 
-## 02-lexical-search.php
+```bash
+php examples/01-vector-search.php
+```
 
-Focus: lexical search only.
+### Fluxo
 
-- Uses keyword and identifier overlap.
-- Useful for exact terms such as error codes and SKUs.
+```text
+Pergunta → EmbeddingProvider → vetor da pergunta
+                                  ↓
+                             VectorStore
+                                  ↓
+                     chunks por similaridade
+```
 
-## 03-multi-query.php
+O exemplo usa apenas recuperação vetorial. A busca lexical fica desativada para deixar claro como a distância semântica influencia o ranking.
 
-Focus: heuristic query planning.
+**Observe:**
 
-- Shows generated sub-queries.
-- Prints results for each query independently.
+- distância de cada resultado;
+- ordem dos chunks;
+- resultados semanticamente próximos mesmo sem repetir todas as palavras da pergunta.
 
-## 04-rrf.php
+## 2️⃣ Busca lexical
 
-Focus: Reciprocal Rank Fusion.
+```bash
+php examples/02-lexical-search.php
+```
 
-- Prints individual rankings.
-- Prints the fused ranking after RRF.
+A busca lexical compara termos e identificadores presentes na pergunta com o conteúdo armazenado.
 
-## 05-context-expansion.php
+Ela é especialmente útil para:
 
-Focus: neighbor chunk expansion.
+- códigos de erro, como `ERR_PAYMENT_1047`;
+- SKUs, como `AX9-RED`;
+- nomes de classes e métodos;
+- termos técnicos que não devem ser aproximados semanticamente.
 
-- Retrieves adjacent chunks around ranked evidence.
-- Shows which chunks were brought as neighbors.
+```text
+"ERR_PAYMENT_1047"
+          ↓ correspondência exata
+chunk que contém ERR_PAYMENT_1047
+```
 
-## 06-hybrid-search.php
+## 3️⃣ Planejamento com múltiplas consultas
 
-Focus: vector vs lexical vs hybrid comparison.
+```bash
+php examples/03-multi-query.php
+```
 
-- Runs three strategies with the same question.
-- Compares top chunks and final selection.
+O `HeuristicQueryRewriter` transforma uma pergunta ampla em consultas menores. Cada consulta é executada separadamente antes da fusão dos resultados.
 
-## 07-diagnostics.php
+```text
+Pergunta original
+├── consulta semântica principal
+├── identificadores detectados
+├── nomes de classes ou funções
+└── termos técnicos relevantes
+```
 
-Focus: complete retrieval diagnostics.
+O script imprime as consultas geradas e os resultados individuais de cada uma.
 
-- Prints query planning, hits per query, fused ids, neighbor ids, context-selection decisions, and timings.
+## 4️⃣ Fusão de rankings com RRF
 
-## 08-end-to-end-rag.php
+```bash
+php examples/04-rrf.php
+```
 
-Focus: full pipeline and answer modes.
+O Reciprocal Rank Fusion combina rankings sem exigir que todos usem a mesma escala de pontuação.
 
-- Runs planning -> retrieval -> RRF -> expansion -> selection -> prompt -> model.
-- Demonstrates both answer APIs:
-  - `ask(...)` returns one complete buffered answer.
-  - `stream(...)` returns incremental deltas.
+```text
+Ranking A       Ranking B
+1. chunk-x      1. chunk-y
+2. chunk-y      2. chunk-z
+3. chunk-z      3. chunk-x
+       \          /
+        \        /
+          RRF
+           ↓
+   ranking consolidado
+```
 
-## ask() vs stream()
+O exemplo mostra rankings individuais e o ranking final após a fusão.
 
-Default behavior remains buffered:
+## 5️⃣ Expansão de contexto
 
-- `ask(...)` is the default path for full answer output.
-- `stream(...)` must be called explicitly for incremental output.
+```bash
+php examples/05-context-expansion.php
+```
 
-Dedicated runnable scripts are available:
+Um chunk relevante pode depender do parágrafo anterior ou da continuação seguinte. A expansão recupera vizinhos pela posição documental.
 
-- `examples/09-ask.php` for complete final answer mode.
-- `examples/10-stream.php` for incremental delta mode.
+```text
+chunk anterior ← chunk encontrado → chunk seguinte
+```
 
-In this repository:
+O script identifica quais chunks vieram do ranking original e quais foram adicionados como vizinhos.
 
-- OpenAI language model supports real incremental streaming.
-- Other models may remain buffered depending on provider implementation.
+## 6️⃣ Busca híbrida
+
+```bash
+php examples/06-hybrid-search.php
+```
+
+Executa a mesma pergunta em três modos:
+
+| Modo | Ponto forte | Limitação isolada |
+|---|---|---|
+| Vetorial | significado e paráfrases | pode diluir identificadores exatos |
+| Lexical | termos literais | não compreende bem paráfrases |
+| Híbrido | combina os dois sinais | exige fusão e diagnóstico adequados |
+
+Compare os primeiros chunks de cada estratégia e observe como a seleção final muda.
+
+## 7️⃣ Diagnósticos completos
+
+```bash
+php examples/07-diagnostics.php
+```
+
+Este é o exemplo indicado para investigar por que determinado resultado foi selecionado.
+
+Ele apresenta:
+
+- consultas planejadas;
+- hits de cada consulta;
+- IDs após RRF;
+- vizinhos adicionados;
+- decisões da seleção adaptativa;
+- tempo gasto em cada etapa.
+
+```text
+planejamento → busca → fusão → expansão → seleção
+    ms           ms      ms        ms          ms
+```
+
+## 8️⃣ Pipeline RAG completo
+
+```bash
+php examples/08-end-to-end-rag.php
+```
+
+### Fluxo completo
+
+```text
+Question
+   ↓
+planejamento de consultas
+   ↓
+retrieval vetorial + lexical
+   ↓
+RRF + expansão + seleção
+   ↓
+ContextPromptBuilder
+   ↓
+LanguageModel
+   ↓
+Answer + fontes + diagnósticos
+```
+
+O exemplo executa resposta completa e streaming sobre o mesmo contexto, permitindo comparar os dois modos.
+
+## 💬 `ask()` ou `stream()`?
+
+### Resposta completa com `ask()`
+
+```bash
+php examples/09-ask.php
+```
+
+```php
+$answer = $engine->ask($question);
+echo $answer->content;
+```
+
+Use quando a aplicação precisa receber a resposta final de uma vez. Esse é o comportamento padrão e mais simples.
+
+### Resposta incremental com `stream()`
+
+```bash
+php examples/10-stream.php
+```
+
+```php
+foreach ($engine->stream($question) as $delta) {
+    if ($delta->final) {
+        break;
+    }
+
+    echo $delta->content;
+}
+```
+
+Use em interfaces conversacionais ou terminais que devem apresentar conteúdo à medida que chega.
+
+> Streaming incremental depende do provider implementar `StreamingLanguageModel`. OpenAI possui suporte incremental real; outros providers podem operar apenas no modo buffered.
+
+## 🧭 Qual exemplo devo executar?
+
+| Quero entender... | Execute |
+|---|---|
+| similaridade semântica | `01-vector-search.php` |
+| códigos e identificadores exatos | `02-lexical-search.php` |
+| decomposição de perguntas | `03-multi-query.php` |
+| combinação de rankings | `04-rrf.php` |
+| contexto antes e depois do resultado | `05-context-expansion.php` |
+| busca vetorial e textual combinadas | `06-hybrid-search.php` |
+| decisões internas do retrieval | `07-diagnostics.php` |
+| fluxo RAG completo | `08-end-to-end-rag.php` |
+| resposta final simples | `09-ask.php` |
+| saída incremental | `10-stream.php` |
+
+## 🔗 Próximos passos
+
+- [Retrieval para iniciantes](retrieval-for-beginners.md)
+- [Pipeline de retrieval](retrieval-pipeline.md)
+- [Busca híbrida](hybrid-search.md)
+- [Seleção adaptativa de contexto](adaptive-context-selection.md)
+- [Pipeline RAG](rag-pipeline.md)
+- [Exemplos de ingestão estrutural](../examples/structural-ingestion/README.md)

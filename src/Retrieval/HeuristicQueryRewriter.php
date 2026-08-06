@@ -10,12 +10,20 @@ use Omegaalfa\ContextEngine\Rag\Question;
 
 final readonly class HeuristicQueryRewriter implements QueryRewriter
 {
+    /**
+     * @param int $maximumQueries
+     */
     public function __construct(private int $maximumQueries = 4)
     {
         if ($maximumQueries < 1 || $maximumQueries > 10) {
             throw new InvalidArgumentException('Maximum queries must be between one and ten.');
         }
     }
+
+    /**
+     * @param Question $question
+     * @return RewrittenQueries
+     */
     public function rewrite(Question $question): RewrittenQueries
     {
         $original = $question->content;

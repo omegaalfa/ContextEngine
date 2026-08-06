@@ -14,36 +14,72 @@ use Omegaalfa\ContextEngine\Retrieval\LexicalSearchQuery;
 
 final readonly class Retriever
 {
+    /**
+     *
+     */
     private const LEXICAL_RANKING_KEY = '__lexical__';
 
+    /**
+     * @var QueryRewriter|IdentityQueryRewriter
+     */
     private QueryRewriter $queryRewriter;
+    /**
+     * @var NeighborExpansion
+     */
     private NeighborExpansion $neighborExpansion;
+    /**
+     * @var ReciprocalRankFusion
+     */
     private ReciprocalRankFusion $fusion;
+
+    /**
+     * @param EmbeddingProvider $embeddings
+     * @param VectorStore $store
+     * @param RetrievalPolicy $policy
+     * @param string|null $collection
+     * @param string $status
+     * @param QueryRewriter|null $queryRewriter
+     * @param NeighborExpansion|null $neighborExpansion
+     * @param int|null $fusedLimit
+     * @param int|null $contextChunkLimit
+     * @param int|null $maximumContextCharacters
+     * @param ReciprocalRankFusion|null $fusion
+     * @param ContextRelevancePolicy|null $contextRelevancePolicy
+     * @param VersionSelectionPolicy|null $versionSelectionPolicy
+     * @param LexicalSearchStore|null $lexicalStore
+     */
     public function __construct(
-        private EmbeddingProvider $embeddings,
-        private VectorStore $store,
-        private RetrievalPolicy $policy = new RetrievalPolicy(),
-        private ?string $collection = null,
-        private string $status = 'active',
-        ?QueryRewriter $queryRewriter = null,
-        ?NeighborExpansion $neighborExpansion = null,
-        private ?int $fusedLimit = null,
-        private ?int $contextChunkLimit = null,
-        private ?int $maximumContextCharacters = null,
-        ?ReciprocalRankFusion $fusion = null,
+        private EmbeddingProvider       $embeddings,
+        private VectorStore             $store,
+        private RetrievalPolicy         $policy = new RetrievalPolicy(),
+        private ?string                 $collection = null,
+        private string                  $status = 'active',
+        ?QueryRewriter                  $queryRewriter = null,
+        ?NeighborExpansion              $neighborExpansion = null,
+        private ?int                    $fusedLimit = null,
+        private ?int                    $contextChunkLimit = null,
+        private ?int                    $maximumContextCharacters = null,
+        ?ReciprocalRankFusion           $fusion = null,
         private ?ContextRelevancePolicy $contextRelevancePolicy = null,
         private ?VersionSelectionPolicy $versionSelectionPolicy = null,
-        private ?LexicalSearchStore $lexicalStore = null,
-    ) {
+        private ?LexicalSearchStore     $lexicalStore = null,
+    )
+    {
         $this->queryRewriter = $queryRewriter ?? new IdentityQueryRewriter();
         $this->neighborExpansion = $neighborExpansion ?? new NeighborExpansion();
         $this->fusion = $fusion ?? new ReciprocalRankFusion();
     }
+
     /** @return list<VectorSearchResult> */
     public function retrieve(Question $question): array
     {
         return $this->retrieveWithDiagnostics($question)->results;
     }
+
+    /**
+     * @param Question $question
+     * @return RetrievalOutcome
+     */
     public function retrieveWithDiagnostics(Question $question): RetrievalOutcome
     {
         $totalStarted = hrtime(true);
@@ -122,9 +158,9 @@ final readonly class Retriever
             $resultsByQuery,
             null,
             $rawCount - count($uniqueChunkIds),
-            array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $fused),
+            array_map(static fn(VectorSearchResult $result): string => $result->chunk->id, $fused),
             $neighborIds,
-            array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $selection['selected']),
+            array_map(static fn(VectorSearchResult $result): string => $result->chunk->id, $selection['selected']),
             $selection['discarded'],
             $selection['characters'],
             [
@@ -148,7 +184,7 @@ final readonly class Retriever
     private function toQueryDiagnostics(string $query, array $results): array
     {
         return array_map(
-            static fn (VectorSearchResult $result, int $offset): QueryResultDiagnostic => new QueryResultDiagnostic(
+            static fn(VectorSearchResult $result, int $offset): QueryResultDiagnostic => new QueryResultDiagnostic(
                 $query,
                 $offset + 1,
                 $result->chunk->id,
@@ -172,17 +208,17 @@ final readonly class Retriever
             return [];
         }
         return array_map(
-            static fn (ContextSelectionDiagnostic $decision): ContextSelectionDiagnostic =>
-                isset($budgetDiscardReasons[$decision->chunkId])
-                    ? new ContextSelectionDiagnostic(
-                        $decision->chunkId,
-                        false,
-                        $budgetDiscardReasons[$decision->chunkId],
-                    )
-                    : $decision,
+            static fn(ContextSelectionDiagnostic $decision): ContextSelectionDiagnostic => isset($budgetDiscardReasons[$decision->chunkId])
+                ? new ContextSelectionDiagnostic(
+                    $decision->chunkId,
+                    false,
+                    $budgetDiscardReasons[$decision->chunkId],
+                )
+                : $decision,
             $adaptive,
         );
     }
+
     /**
      * @param list<VectorSearchResult> $hits
      * @return array{list<VectorSearchResult>, list<string>}
@@ -192,7 +228,7 @@ final readonly class Retriever
         if (!$this->neighborExpansion->enabled() || !$this->store instanceof NeighborAwareVectorStore) {
             return [$hits, []];
         }
-        $rankedIds = array_fill_keys(array_map(static fn (VectorSearchResult $hit): string => $hit->chunk->id, $hits), true);
+        $rankedIds = array_fill_keys(array_map(static fn(VectorSearchResult $hit): string => $hit->chunk->id, $hits), true);
         $seen = [];
         $expanded = [];
         $neighborIds = [];
@@ -227,8 +263,7 @@ final readonly class Retriever
                 }
                 usort(
                     $group,
-                    static fn (VectorSearchResult $a, VectorSearchResult $b): int =>
-                    $a->chunk->position <=> $b->chunk->position
+                    static fn(VectorSearchResult $a, VectorSearchResult $b): int => $a->chunk->position <=> $b->chunk->position
                 );
             }
             foreach ($group as $candidate) {
@@ -240,6 +275,11 @@ final readonly class Retriever
         }
         return [$expanded, array_values(array_unique($neighborIds))];
     }
+
+    /**
+     * @param int $started
+     * @return float
+     */
     private static function elapsed(int $started): float
     {
         return (hrtime(true) - $started) / 1_000_000;

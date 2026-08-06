@@ -18,6 +18,7 @@ final readonly class ParserRegistry
             'json' => new JsonParser(),
             'xml' => new XmlParser(),
             'php' => new PhpParser(),
+            'pdf' => new PdfParser(),
             default => new PlainTextParser(),
         };
     }

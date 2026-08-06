@@ -33,13 +33,20 @@ use Omegaalfa\QueryBuilder\QueryBuilder;
 /** Default direct composition for Ollama embeddings and PostgreSQL/pgvector. */
 final class Bootstrap
 {
-    private function __construct() {}
+    /**
+     *
+     */
+    private function __construct()
+    {
+    }
 
-    /** @param Closure(AsyncHttpClient): LanguageModel $languageModelFactory */
-    public static function create(
-        ContextEngineConfig $config,
-        Closure $languageModelFactory,
-    ): ContextEngineContext {
+    /**
+     * @param ContextEngineConfig $config
+     * @param Closure(AsyncHttpClient): LanguageModel $languageModelFactory
+     * @return ContextEngineContext
+     */
+    public static function create(ContextEngineConfig $config, Closure $languageModelFactory): ContextEngineContext
+    {
         $loop = new FiberEventLoop();
         $http = new AsyncHttpClient($loop);
 
@@ -117,6 +124,11 @@ final class Bootstrap
         );
     }
 
+    /**
+     * @param object $store
+     * @param bool $hybridSearch
+     * @return LexicalSearchStore|null
+     */
     private static function resolveLexicalStore(object $store, bool $hybridSearch): ?LexicalSearchStore
     {
         if (!$hybridSearch) {
