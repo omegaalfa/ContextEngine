@@ -84,6 +84,9 @@ DocumentNode
 | `TableNode` | tabela preservada como unidade | informações fornecidas pelo parser |
 | `ListNode` | lista ordenada ou não ordenada | `ordered` |
 | `QuoteNode` | citação ou bloco destacado | metadata da origem |
+| `FigureTextNode` | texto residual de figura | motivo e confiança da classificação |
+| `DiagramTextNode` | rótulos ou valores dispersos de diagrama | motivo e posição original |
+| `UnknownNode` | bloco suspeito sem categoria segura | heurística aplicada |
 
 Cada nó expõe:
 
@@ -171,6 +174,112 @@ Página 102                     Página 103
 ```
 
 Para livros, configure o loader para produzir um documento lógico único. O exemplo executável usa `pagesPerDocument: PHP_INT_MAX`; headings e limites da estratégia determinam os chunks, não janelas físicas de páginas.
+
+## 🧹 Detecção de ruído estrutural
+
+PDFs não armazenam necessariamente parágrafos, headings ou tabelas. Muitas vezes guardam apenas caracteres posicionados visualmente. Durante a extração, diagramas e figuras podem virar blocos como:
+
+```text
+Um      B                     B     D
+
+0    0       0               0     0     0
+
+A
+B
+C
+D
+```
+
+O `PdfParser` executa `StructuralNoisePolicy` antes de tentar classificar um bloco como heading, tabela ou parágrafo.
+
+```text
+bloco extraído
+      ↓
+código ou lista válida? ── sim ─→ preservar
+      ↓ não
+StructuralNoisePolicy
+      ├── conteúdo natural ──────→ parsing normal
+      ├── FigureTextNode ────────→ diagnóstico
+      ├── DiagramTextNode ───────→ diagnóstico
+      └── UnknownNode ───────────→ diagnóstico
+```
+
+### Heurísticas
+
+| Heurística | Sinal observado |
+|---|---|
+| caracteres alfabéticos mínimos | blocos sem linguagem natural |
+| proporção mínima de texto | excesso de números e símbolos |
+| grupos de espaços consecutivos | colunas visuais e rótulos dispersos |
+| proporção de tokens isolados | sequências como `A B C D` |
+| linhas de um único caractere | rótulos verticais de figuras |
+| bloco exclusivamente numérico | eixos, matrizes e resíduos gráficos |
+| densidade de palavras naturais | diferença entre frase curta e layout fragmentado |
+
+As decisões são determinísticas, locais e não usam IA, OCR, rede ou estado externo.
+
+### Preservação diagnóstica
+
+Por padrão, blocos com alta confiança de ruído não são apagados da árvore. Eles recebem um nó específico e metadata diagnóstica:
+
+```php
+[
+    'structural_noise' => true,
+    'exclude_from_retrieval' => true,
+    'noise_reason' => 'isolated_token_sequence',
+    'noise_confidence' => 0.98,
+    'source_position' => 42,
+    'page_start' => 234,
+    'page_end' => 234,
+]
+```
+
+O `ChunkBuilder` ignora nós com `exclude_from_retrieval: true`. Assim, eles permanecem disponíveis para inspeção do parser, mas não geram embeddings nem chunks independentes.
+
+Código-fonte e listas reconhecidas são protegidos antes da política para evitar perda de estruturas legítimas com símbolos ou linhas curtas.
+
+### Configuração
+
+Os defaults são conservadores:
+
+```php
+use Omegaalfa\ContextEngine\Ingestion\Chunking\CharacterLimitStrategy;
+use Omegaalfa\ContextEngine\Ingestion\Parser\ParserRegistry;
+use Omegaalfa\ContextEngine\Ingestion\Parser\StructuralNoisePolicy;
+use Omegaalfa\ContextEngine\Splitter\StructuralTextSplitter;
+
+$noisePolicy = new StructuralNoisePolicy(
+    enabled: true,
+    minimumAlphabeticCharacters: 2,
+    minimumTextRatio: 0.25,
+    minimumBlockLength: 3,
+    maximumIsolatedTokenRatio: 0.60,
+    maximumConsecutiveSpaceGroups: 2,
+);
+
+$splitter = new StructuralTextSplitter(
+    strategy: new CharacterLimitStrategy(1_200),
+    parsers: new ParserRegistry($noisePolicy),
+);
+```
+
+Para auditoria ou comparação, desabilite a filtragem sem trocar o parser:
+
+```php
+$policy = new StructuralNoisePolicy(enabled: false);
+```
+
+Os parâmetros participam do fingerprint do splitter. Alterar a política produz uma nova identidade de ingestão e evita misturar versões geradas com heurísticas diferentes.
+
+### Limitações
+
+- diagramas com frases completas podem parecer parágrafos legítimos;
+- tabelas muito curtas podem ser classificadas como diagrama;
+- fórmulas matemáticas sem descrição textual podem ser excluídas do retrieval;
+- PDFs com ordem textual incorreta continuam exigindo um extrator melhor;
+- a política não interpreta imagens nem reconstrói relações espaciais.
+
+Quando houver dúvida, prefira defaults conservadores e inspecione `noise_reason`, `noise_confidence`, página e posição antes de tornar a filtragem mais agressiva.
 
 ## ✂️ Como o ChunkBuilder trabalha
 

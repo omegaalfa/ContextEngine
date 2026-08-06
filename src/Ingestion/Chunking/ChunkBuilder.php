@@ -83,6 +83,9 @@ final readonly class ChunkBuilder
     private function flatten(array $nodes, array $hierarchy, array &$blocks): void
     {
         foreach ($nodes as $node) {
+            if (($node->metadata()['exclude_from_retrieval'] ?? false) === true) {
+                continue;
+            }
             $path = $hierarchy;
             if ($node->type() === 'heading' || $node->type() === 'section') {
                 $level = (int) ($node->metadata()['level'] ?? count($path) + 1);

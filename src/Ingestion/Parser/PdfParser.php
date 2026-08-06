@@ -6,17 +6,22 @@ namespace Omegaalfa\ContextEngine\Ingestion\Parser;
 
 use Omegaalfa\ContextEngine\Document\Document;
 use Omegaalfa\ContextEngine\Ingestion\DocumentModel\CodeBlockNode;
+use Omegaalfa\ContextEngine\Ingestion\DocumentModel\DiagramTextNode;
 use Omegaalfa\ContextEngine\Ingestion\DocumentModel\DocumentNode;
+use Omegaalfa\ContextEngine\Ingestion\DocumentModel\FigureTextNode;
 use Omegaalfa\ContextEngine\Ingestion\DocumentModel\HeadingNode;
 use Omegaalfa\ContextEngine\Ingestion\DocumentModel\ListNode;
 use Omegaalfa\ContextEngine\Ingestion\DocumentModel\Node;
 use Omegaalfa\ContextEngine\Ingestion\DocumentModel\ParagraphNode;
 use Omegaalfa\ContextEngine\Ingestion\DocumentModel\TableNode;
+use Omegaalfa\ContextEngine\Ingestion\DocumentModel\UnknownNode;
 
 final readonly class PdfParser implements DocumentParser
 {
     /** @var string */
     private const PAGE_PATTERN = '/\[\[CONTEXT_ENGINE_PAGE:(\d+)]]\s*/u';
+
+    public function __construct(private StructuralNoisePolicy $noisePolicy = new StructuralNoisePolicy()) {}
 
     public function parse(Document $document): DocumentNode
     {
@@ -46,7 +51,32 @@ final readonly class PdfParser implements DocumentParser
                 continue;
             }
 
-            $metadata = ['page_start' => $page, 'page_end' => $page];
+            $metadata = ['page_start' => $page, 'page_end' => $page, 'source_position' => count($nodes)];
+            if ($this->isCode($block)) {
+                $nodes[] = new CodeBlockNode($block, array_merge($metadata, ['language' => 'php']));
+                continue;
+            }
+            if ($this->isList($block)) {
+                $nodes[] = new ListNode($block, $metadata);
+                continue;
+            }
+
+            $noise = $this->noisePolicy->classify($block);
+            if ($noise->isNoise()) {
+                $noiseMetadata = array_merge($metadata, [
+                    'structural_noise' => true,
+                    'exclude_from_retrieval' => $noise->excludeFromRetrieval,
+                    'noise_reason' => $noise->reason,
+                    'noise_confidence' => $noise->confidence,
+                ]);
+                $nodes[] = match ($noise->kind) {
+                    StructuralNoiseKind::FIGURE_TEXT => new FigureTextNode($block, $noiseMetadata),
+                    StructuralNoiseKind::DIAGRAM_TEXT => new DiagramTextNode($block, $noiseMetadata),
+                    default => new UnknownNode($block, $noiseMetadata),
+                };
+                continue;
+            }
+
             $lines = preg_split('/\R/u', $block) ?: [];
             $firstLine = trim($lines[0] ?? '');
             if (count($lines) > 1 && $this->isAttachedHeading($firstLine)) {
@@ -58,8 +88,6 @@ final readonly class PdfParser implements DocumentParser
             }
 
             $nodes[] = match (true) {
-                $this->isCode($block) => new CodeBlockNode($block, array_merge($metadata, ['language' => 'php'])),
-                $this->isList($block) => new ListNode($block, $metadata),
                 $this->isTable($block) => new TableNode($block, $metadata),
                 $this->isHeading($block) => new HeadingNode($block, array_merge($metadata, ['level' => $this->headingLevel($block)])),
                 default => new ParagraphNode($block, $metadata),

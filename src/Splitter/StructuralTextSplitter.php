@@ -24,7 +24,12 @@ final readonly class StructuralTextSplitter implements TextSplitter
 
     public function fingerprint(): string
     {
-        return hash('sha256', 'structural-text-splitter\0v1\0' . $this->strategy->fingerprint());
+        return hash('sha256', implode("\0", [
+            'structural-text-splitter',
+            '2',
+            $this->strategy->fingerprint(),
+            $this->parsers->fingerprint(),
+        ]));
     }
 
     public function split(Document $document): iterable

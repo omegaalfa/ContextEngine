@@ -9,6 +9,6 @@
 | 🧠 RAG | [Retrieval para iniciantes](retrieval-for-beginners.md) · [Vector store](vector-store.md) · [Schema](database-schema.md) · [Retrieval](retrieval.md) · [Busca híbrida](hybrid-search.md) · [Pipeline avançada](retrieval-pipeline.md) · [Playbook de exemplos](examples-retrieval-playbook.md) · [Protocolo de prompt](prompt-protocol.md) · [Pipeline RAG](rag-pipeline.md) |
 | 🔌 Infra | [Providers](providers.md) · [Cache](caching.md) · [Concorrência](concurrency.md) · [Streaming](streaming.md) |
 | 🛡️ Operação | [Erros](error-handling.md) · [Segurança](security.md) · [Performance](performance.md) · [Troubleshooting](troubleshooting.md) · [Limitações](limitations.md) |
-| 🧪 Desenvolvimento | [Docker](docker-integration.md) · [Testes](testing.md) · [Extensão](extension-guide.md) · [Roadmap](roadmap.md) |
+| 🧪 Desenvolvimento | [Avaliação de RAG](evaluation.md) · [Docker](docker-integration.md) · [Testes](testing.md) · [Extensão](extension-guide.md) · [Roadmap](roadmap.md) |
 
 O código em `src/` é a fonte de verdade. Infraestrutura dependente de credenciais ou serviços externos é indicada em cada exemplo.

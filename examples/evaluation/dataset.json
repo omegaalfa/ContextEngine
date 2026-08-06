@@ -1,0 +1,20 @@
+[
+  {
+    "id": "payment-error",
+    "question": "Como tratar ERR_PAYMENT_1047?",
+    "relevantDocumentIds": ["payment-errors"],
+    "expectedTerms": ["contextual evidence"]
+  },
+  {
+    "id": "refund-window",
+    "question": "Qual é o prazo para pedir reembolso?",
+    "relevantDocumentIds": ["refund-policy"],
+    "expectedTerms": ["contextual evidence"]
+  },
+  {
+    "id": "inventory",
+    "question": "O que fazer quando o estoque de AX9-RED estiver baixo?",
+    "relevantDocumentIds": ["inventory-guide"],
+    "expectedTerms": ["contextual evidence"]
+  }
+]
