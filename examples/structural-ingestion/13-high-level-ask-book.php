@@ -6,6 +6,7 @@ require __DIR__ . '/_support.php';
 
 use Omegaalfa\ContextEngine\ContextEngine;
 use Omegaalfa\ContextEngine\Contract\LanguageModel;
+use Omegaalfa\ContextEngine\Exception\InsufficientContextException;
 use Omegaalfa\ContextEngine\Provider\Ollama\OllamaLanguageModel;
 use Omegaalfa\FiberEventLoop\FiberEventLoop;
 use Omegaalfa\HttpClient\Http\AsyncHttpClient;
@@ -36,7 +37,7 @@ $engine = ContextEngine::create()
         retrievalLimit: 8,
         fusedLimit: 5,
         contextChunkLimit: 5,
-        maximumDistance: 0.60,
+        maximumDistance: 0.43,
     )
     ->withLanguageModelFactory(
         static fn (): LanguageModel => new OllamaLanguageModel(
@@ -65,6 +66,12 @@ try {
     $execution = $engine->askWithDiagnostics($question, $tenantId);
     $elapsed = (hrtime(true) - $startedAt) / 1_000_000_000;
 
+    if ($execution->answer->sources === []) {
+        echo 'Não encontrei evidências suficientes no livro para responder a essa pergunta.' . PHP_EOL;
+        echo 'A IA não foi chamada.' . PHP_EOL;
+        exit(0);
+    }
+
     echo str_repeat('=', 72) . PHP_EOL;
     echo 'RESPOSTA' . PHP_EOL;
     echo str_repeat('=', 72) . PHP_EOL;
@@ -88,6 +95,9 @@ try {
     }
 
     echo 'Tempo total: ' . number_format($elapsed, 2, ',', '.') . ' s' . PHP_EOL;
+} catch (InsufficientContextException) {
+    echo 'Não encontrei evidências suficientes no livro para responder a essa pergunta.' . PHP_EOL;
+    echo 'A IA não foi chamada.' . PHP_EOL;
 } catch (Throwable $error) {
     fwrite(STDERR, 'A resposta contextual falhou: ' . $error->getMessage() . PHP_EOL);
     exit(1);

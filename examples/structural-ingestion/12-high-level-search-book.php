@@ -8,7 +8,7 @@ use Omegaalfa\ContextEngine\ContextEngine;
 
 $question = trim(implode(' ', array_slice($argv, 1)));
 if ($question === '') {
-    $question = 'Como funciona o algoritmo quicksort?';
+    $question = 'Como funciona o algoritmo Dijkstra?';
 }
 
 $tenantId = structural_demo_tenant();

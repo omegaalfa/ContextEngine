@@ -147,3 +147,4 @@ php examples/structural-ingestion/13-high-level-ask-book.php "Como funciona o qu
 
 Esse exemplo usa `askWithDiagnostics()`, imprime a resposta da IA e lista os chunks realmente enviados ao modelo com páginas, headings e distâncias.
 Como modelos locais podem levar mais de 30 segundos para gerar, o exemplo configura timeout de leitura de 180 segundos pela própria API fluente com `withLanguageModelFactory()`.
+Para evitar respostas sobre termos ausentes, o exemplo usa `maximumDistance: 0.43`, calibrado com perguntas válidas e inválidas deste livro. Quando nenhuma evidência atinge o limite, a IA não é chamada e o comando informa que o livro não contém contexto suficiente.

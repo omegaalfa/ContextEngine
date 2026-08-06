@@ -300,6 +300,7 @@ A High-Level API não substitui a arquitetura interna. Ela apenas centraliza sua
 - trate livros e PDFs longos como um documento lógico único;
 - comece com chunks entre 800 e 1.500 caracteres e ajuste com métricas reais;
 - use diagnósticos antes de aumentar indiscriminadamente o limite de retrieval.
+- calibre `maximumDistance` com perguntas válidas e inválidas; resultados acima do limite não devem chegar ao modelo.
 
 ## 🧪 Exemplos executáveis
 
