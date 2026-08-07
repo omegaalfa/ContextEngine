@@ -103,13 +103,13 @@ final readonly class RagPipeline
      */
     public function stream(Question|string $question, ?string $tenantId = null): iterable
     {
+        if ($this->streamingModel === null) {
+            throw new StreamingNotSupportedException('No incremental streaming language model is configured.');
+        }
         $question = $this->question($question, $tenantId);
         $sources = $this->retriever->retrieve($question);
         if ($sources === []) {
             throw new InsufficientContextException($this->noEvidencePolicy->response($question));
-        }
-        if ($this->streamingModel === null) {
-            throw new StreamingNotSupportedException('No incremental streaming language model is configured.');
         }
         yield from $this->streamingModel->stream($this->prompts->build($question, $sources));
     }

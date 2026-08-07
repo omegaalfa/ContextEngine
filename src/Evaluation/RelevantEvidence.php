@@ -6,6 +6,12 @@ namespace Omegaalfa\ContextEngine\Evaluation;
 
 use InvalidArgumentException;
 
+/**
+ * Define evidência relevante por documento e conteúdo equivalente.
+ *
+ * Resolve goldens frágeis que dependem de um único chunkId mesmo quando vários
+ * trechos do documento sustentam corretamente a resposta.
+ */
 final readonly class RelevantEvidence
 {
     /** @param list<list<string>> $requiredTextGroups */

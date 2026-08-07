@@ -21,6 +21,159 @@ new RelevantEvidence(
 
 O relatório live imprime a resposta, as consultas geradas, os grupos encontrados ou ausentes e os sinais de ranking de cada fonte. Isso evita confundir uma resposta equivalente com falha de retrieval.
 
+## 🧭 Qual métrica usar?
+
+Pense nas métricas como perguntas diferentes:
+
+| Métrica | Pergunta respondida | Decide aprovação por padrão? |
+|---|---|---|
+| **Groundedness** | As afirmações da resposta possuem apoio nos chunks selecionados? | Sim |
+| **Answer Relevance** | A resposta trata diretamente do que foi perguntado? | Sim |
+| **Correctness** | A resposta contém os fatos definidos no gabarito? | Sim, quando existe gabarito |
+| **Expected Terms** | Os termos configurados apareceram literalmente? | Não |
+| **Exact Match** | A resposta é igual ao texto esperado? | Não |
+
+`Expected Terms` e `Exact Match` continuam disponíveis para diagnóstico e regressão. Eles não reprovam sozinhos uma resposta correta, pois uma mesma ideia pode ser escrita de maneiras diferentes.
+
+## 🧱 Groundedness determinístico
+
+`DeterministicTextualGroundednessEvaluator` divide a resposta em afirmações e procura apoio textual nos chunks usados para gerar a resposta. `DeterministicGroundednessEvaluator` permanece como nome compatível para aplicações existentes.
+
+Ele considera:
+
+- palavras significativas, ignorando conectivos comuns;
+- números, fórmulas e identificadores;
+- frases já presentes no contexto;
+- entidades citadas na resposta, penalizando entidades ausentes;
+- o chunk que sustentou cada afirmação.
+
+O detalhe fica disponível em `EvaluationScore::details` como `GroundednessResult`:
+
+```php
+$score = $result->scores['groundedness'];
+$details = $score->details;
+
+foreach ($details->supportedClaims as $claim) {
+    echo $claim['claim'].' apoiada por '.$claim['chunkId'];
+}
+
+foreach ($details->unsupportedClaims as $claim) {
+    echo 'Sem apoio: '.$claim;
+}
+```
+
+> Esta primeira versão mede **apoio textual determinístico**. Ela não compreende equivalência semântica completa e não substitui revisão humana em domínios críticos.
+
+Ela detecta divergências lexicais importantes, como negação inserida, fórmula alterada e identificador trocado. Ainda assim, não garante equivalência lógica nem ausência de contradições sofisticadas.
+
+## 🎯 Relevância da resposta
+
+`AnswerRelevanceEvaluator` compara a intenção e os termos centrais da pergunta com a resposta. O gabarito não interfere nessa métrica.
+
+Se a pergunta for “Qual é a complexidade do Bellman-Ford?”, a resposta “O Bellman-Ford possui complexidade O(VE)” pode obter relevância máxima sem mencionar pesos negativos, pois isso não foi solicitado.
+
+## ✅ Correctness com claims
+
+Use `ExpectedClaim` quando houver um fato objetivo que a resposta precisa conter. Cada claim possui alternativas aceitas:
+
+```php
+use Omegaalfa\ContextEngine\Evaluation\ExpectedClaim;
+
+new EvaluationCase(
+    id: 'bellman-ford-complexity',
+    question: 'Qual é a complexidade do Bellman-Ford?',
+    expectedClaims: [
+        new ExpectedClaim(
+            id: 'complexity',
+            alternatives: ['O(VE)', 'O(V * E)', 'O(|V||E|)'],
+        ),
+    ],
+);
+```
+
+Sem `expectedClaims` ou `expectedAnswer`, `Correctness` fica **não aplicável**. Ausência de gabarito nunca vira nota zero.
+
+> `Correctness = 1.00` significa **compatível com os claims configurados no golden**. Não significa “verdade factual universal”. Um claim mal definido pode aprovar uma resposta errada; por isso, configure a relação factual completa em cada alternativa, e não apenas palavras isoladas.
+
+Evite isto:
+
+```php
+new ExpectedClaim('creator', ['Wesley', 'Bellman-Ford', '1999']);
+```
+
+Prefira alternativas que expressem o fato completo:
+
+```php
+new ExpectedClaim('creator', [
+    'O contexto não informa quem criou o algoritmo Wesley.',
+    'Não há evidência de um algoritmo chamado Wesley.',
+]);
+```
+
+O dataset JSON também aceita claims:
+
+```json
+{
+  "id": "bellman-ford-complexity",
+  "question": "Qual é a complexidade do Bellman-Ford?",
+  "expectedClaims": [
+    {
+      "id": "complexity",
+      "alternatives": ["O(VE)", "O(V * E)", "O(|V||E|)"]
+    }
+  ]
+}
+```
+
+## ⚙️ Política de aprovação
+
+Os limites são configuráveis e independentes das métricas de diagnóstico:
+
+```php
+use Omegaalfa\ContextEngine\Evaluation\AnswerEvaluationPolicy;
+use Omegaalfa\ContextEngine\Evaluation\RagEvaluator;
+
+$evaluator = new RagEvaluator(
+    tenantId: 'acme',
+    policy: new AnswerEvaluationPolicy(
+        minimumGroundedness: 0.80,
+        minimumAnswerRelevance: 0.80,
+        minimumCorrectness: 0.80,
+        requireExpectedTerms: false,
+    ),
+);
+```
+
+Para regressões estritamente literais, defina `requireExpectedTerms: true`. Na maioria dos casos de RAG, mantenha `false`.
+
+## 🔌 Sem dependência de provider
+
+Os avaliadores recebem somente `EvaluationCase` e `RagExecution`. Eles não conhecem Ollama, OpenAI, Cohere, banco vetorial ou qualquer outro provider.
+
+O comportamento padrão permanece:
+
+```text
+offline → determinístico → sem custo externo → reproduzível
+```
+
+Uma futura implementação baseada em LLM poderá implementar `AnswerEvaluator` e ser fornecida explicitamente, sem alterar o comportamento padrão.
+
+## ▶️ Exemplo completo pela linha de comando
+
+O exemplo abaixo não exige Ollama, OpenAI, PostgreSQL ou acesso à internet:
+
+```bash
+php examples/evaluation/evaluate-answer-quality.php
+```
+
+Ele executa o pipeline real da biblioteca e demonstra:
+
+- uma resposta correta que não contém todos os termos diagnósticos;
+- uma resposta sem gabarito factual, com `Correctness` como `N/A`;
+- uma afirmação inventada, marcada como sem apoio;
+- claims com várias escritas aceitas;
+- política de aprovação independente de `Expected Terms`.
+
 ---
 
 ## 🎯 O que é medido

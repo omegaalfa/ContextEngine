@@ -17,6 +17,8 @@ final readonly class EvaluationCase
     public array $expectedTermGroups;
     /** @var list<RelevantEvidence> */
     public array $relevantEvidence;
+    /** @var list<ExpectedClaim> */
+    public array $expectedClaims;
     public bool $hasChunkGroundTruth;
     public bool $hasDocumentGroundTruth;
 
@@ -26,6 +28,7 @@ final readonly class EvaluationCase
      * @param list<string> $expectedTerms
      * @param list<list<string>> $expectedTermGroups
      * @param list<RelevantEvidence> $relevantEvidence
+     * @param list<ExpectedClaim> $expectedClaims
      * @param array<string, scalar|null> $metadata
      */
     public function __construct(
@@ -40,6 +43,7 @@ final readonly class EvaluationCase
         array $expectedTermGroups = [],
         public bool $expectNoEvidence = false,
         array $relevantEvidence = [],
+        array $expectedClaims = [],
     ) {
         if (trim($id) === '') {
             throw new InvalidArgumentException('Evaluation case id cannot be empty.');
@@ -69,7 +73,8 @@ final readonly class EvaluationCase
         }
         $this->expectedTermGroups = $expectedTermGroups;
         $this->relevantEvidence = $relevantEvidence;
-        if ($expectNoEvidence && ($this->hasChunkGroundTruth || $this->hasDocumentGroundTruth || $expectedAnswer !== null || $expectedTerms !== [] || $expectedTermGroups !== [] || $relevantEvidence !== [])) {
+        $this->expectedClaims = $expectedClaims;
+        if ($expectNoEvidence && ($this->hasChunkGroundTruth || $this->hasDocumentGroundTruth || $expectedAnswer !== null || $expectedTerms !== [] || $expectedTermGroups !== [] || $relevantEvidence !== [] || $expectedClaims !== [])) {
             throw new InvalidArgumentException('Negative evaluation cases cannot define positive expectations.');
         }
     }

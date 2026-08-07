@@ -33,6 +33,7 @@ final class EvaluationDatasetLoader
                 tenantId: self::optionalString($row, 'tenantId', $offset),
                 expectedTermGroups: self::stringGroups($row, 'expectedTermGroups', $offset),
                 expectNoEvidence: self::boolean($row, 'expectNoEvidence', $offset),
+                expectedClaims: self::expectedClaims($row, $offset),
             );
         }
 
@@ -121,6 +122,28 @@ final class EvaluationDatasetLoader
             throw new RuntimeException("Evaluation field '{$key}' at offset {$offset} must be boolean.");
         }
         return $value;
+    }
+
+    /**
+     * @param array<mixed> $row
+     * @return list<ExpectedClaim>
+     */
+    private static function expectedClaims(array $row, int $offset): array
+    {
+        $claims = $row['expectedClaims'] ?? [];
+        if (!is_array($claims) || !array_is_list($claims)) {
+            throw new RuntimeException("Evaluation field 'expectedClaims' at offset {$offset} must be a list.");
+        }
+        $result = [];
+        foreach ($claims as $claim) {
+            if (!is_array($claim) || !isset($claim['id'], $claim['alternatives']) || !is_string($claim['id']) || !is_array($claim['alternatives']) || !array_is_list($claim['alternatives']) || $claim['alternatives'] === [] || array_any($claim['alternatives'], static fn ($value): bool => !is_string($value))) {
+                throw new RuntimeException("Evaluation field 'expectedClaims' at offset {$offset} contains an invalid claim.");
+            }
+            /** @var list<string> $alternatives */
+            $alternatives = $claim['alternatives'];
+            $result[] = new ExpectedClaim($claim['id'], $alternatives);
+        }
+        return $result;
     }
 
     /**

@@ -58,7 +58,7 @@ try {
     echo 'Cases: '.$report->executedCases.PHP_EOL;
     echo 'Positive cases: '.count(array_filter($report->results, static fn ($result): bool => !$result->case->expectNoEvidence)).PHP_EOL;
     echo 'Negative cases: '.count(array_filter($report->results, static fn ($result): bool => $result->case->expectNoEvidence)).PHP_EOL.PHP_EOL;
-    foreach (['chunk_recall', 'document_recall', 'evidence_recall', 'strict_exact_match', 'normalized_exact_match', 'contains_expected_terms', 'no_evidence'] as $name) {
+    foreach (['chunk_recall', 'document_recall', 'evidence_recall', 'groundedness', 'answer_relevance', 'correctness', 'contains_expected_terms', 'no_evidence'] as $name) {
         $count = $denominators[$name] ?? 0;
         $value = $count === 0 ? 'n/a' : number_format($averages[$name] / $count, 2);
         echo str_pad($name.' ', 30, '.').' '.$value." ({$count} casos)".PHP_EOL;
@@ -94,6 +94,14 @@ try {
         }
         foreach ($result->scores as $score) {
             echo sprintf('  %-27s %.2f %s', $score->name, $score->value, $score->passed ? '✔' : '✘').PHP_EOL;
+            if ($score->details instanceof \Omegaalfa\ContextEngine\Evaluation\GroundednessResult) {
+                foreach ($score->details->supportedClaims as $claim) {
+                    echo '    [apoiada] '.$claim['claim'].' -> chunk '.$claim['chunkId'].PHP_EOL;
+                }
+                foreach ($score->details->unsupportedClaims as $claim) {
+                    echo '    [sem apoio] '.$claim.PHP_EOL;
+                }
+            }
         }
         if ($result->error !== null) {
             echo '  Erro: '.$result->error.PHP_EOL;

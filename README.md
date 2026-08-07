@@ -25,9 +25,9 @@ ContextEngine é uma biblioteca PHP para construir pipelines de RAG (*Retrieval-
 | Disponível | Ainda não incluído |
 |---|---|
 | ✅ Pipeline incremental de ingestão | ⚠️ Loaders estruturados para HTML ou Markdown |
-| ✅ Busca vetorial com PostgreSQL/pgvector | ⚠️ Embeddings Gemini |
-| ✅ RAG com resposta e fontes | ⚠️ Busca híbrida |
-| ✅ Tenant, collection e status | ⚠️ Reranking |
+| ✅ Busca vetorial e híbrida com PostgreSQL/pgvector | ⚠️ Embeddings Gemini |
+| ✅ RAG com resposta, fontes e abstenção | ⚠️ Reranker cross-encoder |
+| ✅ Tenant, collection, status e versões | ⚠️ Judge semântico por LLM |
 | ✅ `EmbeddingSpace` e fingerprint | ⚠️ Streaming incremental ainda nao incluido em todos os providers |
 | ✅ Providers substituíveis por contratos | ⚠️ Interface web, API ou autenticação |
 | ✅ Cache PSR-16 opcional por decorators | |
@@ -290,6 +290,7 @@ Veja [Limitações e escopo](docs/limitations.md) para os impactos práticos.
 | Aprender RAG do zero | [Primeiros passos](docs/getting-started.md) |
 | Entender módulos e dependências | [Arquitetura](docs/architecture.md) |
 | Consultar termos centrais | [Conceitos](docs/core-concepts.md) |
+| Descobrir qual classe ou método usar | [Mapa completo da API](docs/public-api-map.md) |
 | Configurar fornecedores | [Providers](docs/providers.md) |
 | Ingerir livros e PDFs textuais | [Ingestão de PDF](docs/pdf-ingestion.md) |
 | Entender multi-query, RRF e vizinhos | [Pipeline de retrieval](docs/retrieval-pipeline.md) |
@@ -301,6 +302,7 @@ Veja [Limitações e escopo](docs/limitations.md) para os impactos práticos.
 | Configurar decorators | [Cache](docs/caching.md) |
 | Criar adapters próprios | [Extensão](docs/extension-guide.md) |
 | Diagnosticar problemas | [Troubleshooting](docs/troubleshooting.md) |
+| Medir retrieval e qualidade factual | [Avaliação reproduzível](docs/evaluation.md) |
 | Avaliar fronteiras atuais | [Limitações](docs/limitations.md) |
 | Navegar por todos os guias | [Índice completo](docs/index.md) |
 

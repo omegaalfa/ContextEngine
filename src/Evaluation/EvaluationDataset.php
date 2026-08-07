@@ -32,7 +32,8 @@ final readonly class EvaluationDataset implements Countable, IteratorAggregate
                 && $case->expectedAnswer === null
                 && $case->expectedTerms === []
                 && $case->expectedTermGroups === []
-                && $case->relevantEvidence === []) {
+                && $case->relevantEvidence === []
+                && $case->expectedClaims === []) {
                 throw new InvalidArgumentException("Positive evaluation case '{$case->id}' must define at least one expectation.");
             }
         }

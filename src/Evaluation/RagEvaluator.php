@@ -6,8 +6,12 @@ namespace Omegaalfa\ContextEngine\Evaluation;
 
 use InvalidArgumentException;
 use Omegaalfa\ContextEngine\Evaluation\Evaluator\AnswerRelevanceEvaluator;
+use Omegaalfa\ContextEngine\Evaluation\Evaluator\AnswerEvaluator;
 use Omegaalfa\ContextEngine\Evaluation\Evaluator\CaseEvaluator;
+use Omegaalfa\ContextEngine\Evaluation\Evaluator\CorrectnessEvaluator;
+use Omegaalfa\ContextEngine\Evaluation\Evaluator\DeterministicTextualGroundednessEvaluator;
 use Omegaalfa\ContextEngine\Evaluation\Evaluator\ExactMatchEvaluator;
+use Omegaalfa\ContextEngine\Evaluation\Evaluator\ExpectedTermsEvaluator;
 use Omegaalfa\ContextEngine\Evaluation\Evaluator\RetrievalRecallEvaluator;
 use Omegaalfa\ContextEngine\Evaluation\Metrics\GenerationMetrics;
 use Omegaalfa\ContextEngine\Evaluation\Metrics\RetrievalMetrics;
@@ -17,19 +21,24 @@ use Throwable;
 
 final readonly class RagEvaluator
 {
-    /** @var list<CaseEvaluator> */
+    /** @var list<CaseEvaluator|AnswerEvaluator> */
     private array $evaluators;
+    private AnswerEvaluationPolicy $policy;
 
-    /** @param list<CaseEvaluator>|null $evaluators */
-    public function __construct(private ?string $tenantId = null, ?array $evaluators = null)
+    /** @param list<CaseEvaluator|AnswerEvaluator>|null $evaluators */
+    public function __construct(private ?string $tenantId = null, ?array $evaluators = null, ?AnswerEvaluationPolicy $policy = null)
     {
         if ($tenantId !== null && trim($tenantId) === '') {
             throw new InvalidArgumentException('Evaluation tenant id cannot be empty.');
         }
+        $this->policy = $policy ?? new AnswerEvaluationPolicy();
         $this->evaluators = $evaluators ?? [
             new RetrievalRecallEvaluator(),
             new ExactMatchEvaluator(),
-            new AnswerRelevanceEvaluator(),
+            new DeterministicTextualGroundednessEvaluator(passingScore: $this->policy->minimumGroundedness),
+            new AnswerRelevanceEvaluator($this->policy->minimumAnswerRelevance),
+            new CorrectnessEvaluator($this->policy->minimumCorrectness),
+            new ExpectedTermsEvaluator(),
         ];
     }
 
@@ -67,15 +76,18 @@ final readonly class RagEvaluator
             $execution = $pipeline->askWithDiagnostics($question);
             $scores = [];
             foreach ($this->evaluators as $evaluator) {
-                foreach ($evaluator->evaluate($case, $execution) as $score) {
+                $evaluated = $evaluator->evaluate($case, $execution);
+                $evaluated = $evaluated instanceof \Omegaalfa\ContextEngine\Evaluation\Metrics\EvaluationScore ? [$evaluated] : ($evaluated ?? []);
+                foreach ($evaluated as $score) {
                     $scores[$score->name] = $score;
                 }
             }
             $applicable = array_values($scores);
+            $passed = $applicable !== [] && $this->passes($scores);
 
             return new EvaluationResult(
                 case: $case,
-                passed: $applicable !== [] && !array_any($applicable, static fn ($score): bool => !$score->passed),
+                passed: $passed,
                 scores: $scores,
                 retrieval: new RetrievalMetrics(
                     $scores['chunk_recall']->value ?? null,
@@ -93,7 +105,7 @@ final readonly class RagEvaluator
                 execution: $execution,
                 status: $applicable === []
                     ? EvaluationStatus::NOT_APPLICABLE
-                    : (array_any($applicable, static fn ($score): bool => !$score->passed) ? EvaluationStatus::FAILED : EvaluationStatus::PASSED),
+                    : ($passed ? EvaluationStatus::PASSED : EvaluationStatus::FAILED),
             );
         } catch (Throwable $exception) {
             return new EvaluationResult(
@@ -107,6 +119,17 @@ final readonly class RagEvaluator
                 status: EvaluationStatus::ERROR,
             );
         }
+    }
+
+    /** @param array<string, \Omegaalfa\ContextEngine\Evaluation\Metrics\EvaluationScore> $scores */
+    private function passes(array $scores): bool
+    {
+        foreach ($scores as $name => $score) {
+            if (($name === 'no_evidence' || str_starts_with($name, 'chunk_') || str_starts_with($name, 'document_') || $name === 'evidence_recall') && !$score->passed) {
+                return false;
+            }
+        }
+        return $this->policy->passes($scores);
     }
 
     private function question(EvaluationCase $case): Question
