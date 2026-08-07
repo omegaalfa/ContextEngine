@@ -38,7 +38,7 @@ final readonly class RetrievalEvaluator
             $scores = $this->scores($case, $outcome);
             $status = $scores === []
                 ? EvaluationStatus::NOT_APPLICABLE
-                : (array_any($scores, static fn (EvaluationScore $score): bool => !$score->passed)
+                : (array_any($scores, static fn (EvaluationScore $score): bool => !$score->passed && !str_ends_with($score->name, '_hit_at_1'))
                     ? EvaluationStatus::FAILED
                     : EvaluationStatus::PASSED);
             return new RetrievalEvaluationResult($case, $status, $scores, self::elapsed($started), $outcome);
@@ -91,11 +91,13 @@ final readonly class RetrievalEvaluator
         $precision = $retrieved === [] ? 0.0 : count($hits) / count($retrieved);
         $mrr = $firstRank === null ? 0.0 : 1 / $firstRank;
         $hitRate = $hits === [] ? 0.0 : 1.0;
+        $hitAtOne = $retrieved !== [] && in_array($retrieved[0], $expected, true) ? 1.0 : 0.0;
         return [
             $prefix.'_recall' => new EvaluationScore($prefix.'_recall', $recall, $recall >= 1.0),
             $prefix.'_precision' => new EvaluationScore($prefix.'_precision', $precision, $hits !== []),
             $prefix.'_mrr' => new EvaluationScore($prefix.'_mrr', $mrr, $hits !== []),
             $prefix.'_hit_rate' => new EvaluationScore($prefix.'_hit_rate', $hitRate, $hits !== []),
+            $prefix.'_hit_at_1' => new EvaluationScore($prefix.'_hit_at_1', $hitAtOne, $hitAtOne >= 1.0),
         ];
     }
 

@@ -19,6 +19,8 @@ final readonly class RetrievalDiagnostics
      * @param list<string> $expandedChunkIds
      * @param list<string> $relevanceSelectedChunkIds
      * @param list<string> $evidenceDiscardedChunkIds
+     * @param list<string> $rerankedChunkIds
+     * @param list<RerankDiagnostic> $reranking
      */
     public function __construct(
         public string $originalQuestion,
@@ -37,5 +39,16 @@ final readonly class RetrievalDiagnostics
         public array $expandedChunkIds = [],
         public array $relevanceSelectedChunkIds = [],
         public array $evidenceDiscardedChunkIds = [],
+        public array $rerankedChunkIds = [],
+        public array $reranking = [],
+        public ?string $rerankerName = null,
+        public int $rerankerCandidateCount = 0,
+        public int $rerankerReturnedCount = 0,
+        public ?string $rerankerProvider = null,
+        public ?string $rerankerModel = null,
+        public int $rerankerFailureCount = 0,
+        public int $rerankerFallbackCount = 0,
+        public bool $rerankerTimedOut = false,
+        public ?string $rerankerError = null,
     ) {}
 }

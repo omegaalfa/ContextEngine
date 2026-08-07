@@ -46,9 +46,11 @@ final class RetrievalEvaluationTest extends TestCase
         self::assertSame(0.5, $scores['chunk_precision']->value);
         self::assertSame(0.5, $scores['chunk_mrr']->value);
         self::assertSame(1.0, $scores['chunk_hit_rate']->value);
+        self::assertSame(0.0, $scores['chunk_hit_at_1']->value);
         self::assertSame(1.0, $scores['document_recall']->value);
         self::assertSame(0.5, $scores['document_precision']->value);
         self::assertSame(0.5, $scores['document_mrr']->value);
+        self::assertSame(0.0, $scores['document_hit_at_1']->value);
         self::assertSame(1, $report->denominator('chunk_recall'));
         self::assertSame(1, $report->denominator('document_recall'));
     }

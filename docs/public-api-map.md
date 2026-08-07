@@ -103,6 +103,7 @@ Veja [High-Level API](high-level-api.md).
 | `StreamingLanguageModel` | streaming realmente incremental | `stream()` |
 | `OllamaLanguageModel`, `GeminiLanguageModel` | respostas completas | `complete()`, `generationFingerprint()` |
 | `OpenAILanguageModel` | resposta completa e streaming | `complete()`, `stream()`, `generationFingerprint()` |
+| `CohereReranker` | reordena candidatos com cross-encoder remoto | `rerank()`, `provider()`, `model()` |
 
 `JsonClient::post()` envia JSON e converte falhas em `ProviderException`. `ProviderConfiguration` e `EmbeddingResponseValidator` protegem configurações e respostas inválidas.
 
@@ -116,13 +117,15 @@ Veja [High-Level API](high-level-api.md).
 | `IdentityQueryRewriter` | mantém a consulta original | `rewrite()` |
 | `HeuristicQueryRewriter` | cria variações determinísticas | `rewrite()` |
 | `ReciprocalRankFusion` | combina rankings vetorial e lexical | `fuse()` |
+| `Reranker` | contrato para reordenar candidatos após o RRF | `rerank()` |
+| `DeterministicTextualReranker` | baseline offline por cobertura textual | `rerank()` |
 | `HybridEvidencePolicy` | rejeita hit isolado sem apoio | `select()` |
 | `AdaptiveContextSelector` | aplica relevância adaptativa | `select()` |
 | `ContextSelector` | respeita orçamento final | `select()` |
 | `NeighborExpansion` | configura contexto vizinho | `enabled()` |
 | `VersionSelectionPolicy` | escolhe versões ativas ou históricas | `active()`, `validAt()`, `allVersions()` |
 
-`VectorSearchQuery`, `LexicalSearchQuery` e `NeighborSearchQuery` transportam filtros. `VectorSearchResult`, `RewrittenQueries`, `QueryMatch`, `QueryResultDiagnostic`, `ContextSelectionDiagnostic`, `ContextSelectionReason`, `RetrievalOutcome`, `RetrievalDiagnostics`, `VersionedRetrievalContext` e `VersionedSourceProvenance` explicam resultados e decisões. `ContextRelevancePolicy` configura a seleção adaptativa.
+`VectorSearchQuery`, `LexicalSearchQuery` e `NeighborSearchQuery` transportam filtros. `VectorSearchResult`, `RewrittenQueries`, `QueryMatch`, `QueryResultDiagnostic`, `RerankDiagnostic`, `ContextSelectionDiagnostic`, `ContextSelectionReason`, `RetrievalOutcome`, `RetrievalDiagnostics`, `VersionedRetrievalContext` e `VersionedSourceProvenance` explicam resultados e decisões. `ContextRelevancePolicy` configura a seleção adaptativa.
 
 ## 💬 RAG e prompt
 

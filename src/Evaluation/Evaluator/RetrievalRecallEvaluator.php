@@ -70,6 +70,7 @@ final readonly class RetrievalRecallEvaluator implements CaseEvaluator
         $recall = count($hits) / count($expected);
         $precision = $retrieved === [] ? 0.0 : count($hits) / count($retrieved);
         $hitRate = $hits === [] ? 0.0 : 1.0;
+        $hitAtOne = $retrieved !== [] && in_array($retrieved[0], $expected, true) ? 1.0 : 0.0;
         $reciprocalRank = $firstRank === null ? 0.0 : 1 / $firstRank;
 
         return [
@@ -77,6 +78,7 @@ final readonly class RetrievalRecallEvaluator implements CaseEvaluator
             new EvaluationScore($prefix.'_precision', $precision, $hits !== []),
             new EvaluationScore($prefix.'_mrr', $reciprocalRank, $hits !== []),
             new EvaluationScore($prefix.'_hit_rate', $hitRate, $hits !== []),
+            new EvaluationScore($prefix.'_hit_at_1', $hitAtOne, $hitAtOne >= 1.0),
         ];
     }
 }

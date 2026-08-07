@@ -183,6 +183,7 @@ Ele executa o pipeline real da biblioteca e demonstra:
 | **Chunk Recall / Precision / MRR** | Mede se os trechos corretos foram recuperados e em qual posição. |
 | **Document Recall / Precision / MRR** | Mede os documentos separadamente dos chunks. Um documento correto não torna qualquer chunk dele relevante. |
 | **Hit Rate** | Vale `1` quando ao menos um resultado esperado foi encontrado. |
+| **Hit@1** | Vale `1` quando o primeiro resultado é esperado; é especialmente útil para medir rerankers. |
 | **Strict Exact Match** | Compara literalmente a resposta real com a esperada. |
 | **Normalized Exact Match** | Normaliza Unicode, caixa, pontuação e espaços antes da comparação. |
 | **Contains Expected Terms** | Exige uma alternativa de cada grupo de termos esperado. |

@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Retrieval;
 
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
+use Omegaalfa\ContextEngine\Contract\IdentifiedReranker;
 use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
 use Omegaalfa\ContextEngine\Contract\NeighborAwareVectorStore;
 use Omegaalfa\ContextEngine\Contract\QueryRewriter;
+use Omegaalfa\ContextEngine\Contract\Reranker;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
 use Omegaalfa\ContextEngine\Rag\Question;
+use Omegaalfa\ContextEngine\Exception\RerankerException;
 use Omegaalfa\ContextEngine\Retrieval\LexicalSearchQuery;
 
 final readonly class Retriever
@@ -49,6 +52,7 @@ final readonly class Retriever
      * @param LexicalSearchStore|null $lexicalStore
      * @param array<string, float> $rankingWeights
      * @param HybridEvidencePolicy|null $evidencePolicy
+     * @param Reranker|null $reranker
      */
     public function __construct(
         private EmbeddingProvider       $embeddings,
@@ -67,6 +71,7 @@ final readonly class Retriever
         private ?LexicalSearchStore     $lexicalStore = null,
         private array                   $rankingWeights = [],
         private ?HybridEvidencePolicy  $evidencePolicy = null,
+        private ?Reranker              $reranker = null,
     ) {
         $this->queryRewriter = $queryRewriter ?? new IdentityQueryRewriter();
         $this->neighborExpansion = $neighborExpansion ?? new NeighborExpansion();
@@ -147,9 +152,19 @@ final readonly class Retriever
         }
         $fused = $this->fusion->fuse($rankings, $this->fusedLimit ?? $this->policy->limit, $weights);
         $fusionTime = self::elapsed($fusionStarted);
+        $rerankingStarted = hrtime(true);
+        $rerankerFailure = null;
+        try {
+            $reranked = $this->reranker?->rerank($question, $fused) ?? $fused;
+        } catch (RerankerException $exception) {
+            $rerankerFailure = $exception;
+            $reranked = $fused;
+        }
+        $this->validateReranked($fused, $reranked);
+        $reranking = self::elapsed($rerankingStarted);
         $adaptive = $this->contextRelevancePolicy === null
-            ? ['selected' => $fused, 'decisions' => []]
-            : new AdaptiveContextSelector($this->contextRelevancePolicy)->select($question->content, $fused);
+            ? ['selected' => $reranked, 'decisions' => []]
+            : new AdaptiveContextSelector($this->contextRelevancePolicy)->select($question->content, $reranked);
         $evidence = $this->evidencePolicy?->select($question->content, $adaptive['selected'])
             ?? ['selected' => $adaptive['selected'], 'discarded' => []];
         $expansionStarted = hrtime(true);
@@ -182,6 +197,7 @@ final readonly class Retriever
                 'retrieval' => $retrieval,
                 ...($lexicalRetrieval !== null ? ['lexicalRetrieval' => $lexicalRetrieval] : []),
                 'fusion' => $fusionTime,
+                'reranking' => $reranking,
                 'expansion' => $expansion,
                 'selection' => $selectionTime,
                 'total' => self::elapsed($totalStarted),
@@ -190,8 +206,60 @@ final readonly class Retriever
             array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $expanded),
             array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $adaptive['selected']),
             $evidence['discarded'],
+            array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $reranked),
+            $this->rerankDiagnostics($fused, $reranked),
+            $this->reranker instanceof IdentifiedReranker ? $this->reranker->name() : ($this->reranker === null ? null : $this->reranker::class),
+            count($fused),
+            count($reranked),
+            $this->reranker instanceof IdentifiedReranker ? $this->reranker->provider() : null,
+            $this->reranker instanceof IdentifiedReranker ? $this->reranker->model() : null,
+            $rerankerFailure === null ? 0 : 1,
+            $rerankerFailure === null ? 0 : 1,
+            $rerankerFailure === null ? false : $rerankerFailure->timedOut,
+            $rerankerFailure === null ? null : $rerankerFailure->getMessage(),
         );
         return new RetrievalOutcome($selection['selected'], $diagnostics);
+    }
+
+    /**
+     * @param list<VectorSearchResult> $before
+     * @param list<VectorSearchResult> $after
+     */
+    private function validateReranked(array $before, array $after): void
+    {
+        $beforeIds = array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $before);
+        $afterIds = array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $after);
+        sort($beforeIds);
+        sort($afterIds);
+        if ($beforeIds !== $afterIds) {
+            throw new \InvalidArgumentException('Reranker must preserve every candidate exactly once.');
+        }
+    }
+
+    /**
+     * @param list<VectorSearchResult> $before
+     * @param list<VectorSearchResult> $after
+     * @return list<RerankDiagnostic>
+     */
+    private function rerankDiagnostics(array $before, array $after): array
+    {
+        $beforeRanks = [];
+        foreach ($before as $offset => $result) {
+            $beforeRanks[$result->chunk->id] = $offset + 1;
+        }
+        return array_map(
+            static fn (VectorSearchResult $result, int $offset): RerankDiagnostic => new RerankDiagnostic(
+                $result->chunk->id,
+                $beforeRanks[$result->chunk->id],
+                $offset + 1,
+                $result->distance,
+                $result->lexicalScore,
+                $result->fusionScore,
+                $result->rerankerScore,
+            ),
+            $after,
+            array_keys($after),
+        );
     }
 
     /**
@@ -276,6 +344,8 @@ final readonly class Retriever
                         $hit->fusionScore,
                         $hit->matches,
                         $hit->provenance,
+                        $hit->lexicalScore,
+                        $hit->rerankerScore,
                     );
                     $neighborIds[] = $neighbor->id;
                 }

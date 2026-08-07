@@ -38,6 +38,7 @@ $embeddings = new class ($space) implements EmbeddingProvider {
 $results = [
     new VectorSearchResult(new Chunk('bellman', 'algorithms', 'demo', 'O algoritmo Bellman-Ford possui complexidade O(VE) e aceita pesos negativos.', 0), 0.1),
     new VectorSearchResult(new Chunk('avl', 'algorithms', 'demo', 'Uma árvore AVL mantém o balanceamento por meio de rotações.', 1), 0.2),
+    new VectorSearchResult(new Chunk('optimal-bst', 'optimal-bst', 'demo', 'w[i][j] representa a soma das probabilidades no intervalo do Optimal BST.', 0), 0.3),
 ];
 $store = new class ($results) implements VectorStore {
     /** @param list<VectorSearchResult> $results */
@@ -55,6 +56,18 @@ $model = new class () implements LanguageModel {
         $prompt = implode("\n", array_map(static fn ($message): string => $message->content, $messages));
         preg_match('/<QUESTION>\s*(.*?)\s*<\/QUESTION>/su', $prompt, $matches);
         $question = mb_strtolower($matches[1] ?? '');
+        if (str_contains($question, 'adversarial: negação')) {
+            return 'Bellman-Ford não possui complexidade O(VE).';
+        }
+        if (str_contains($question, 'adversarial: complexidade alterada')) {
+            return 'Bellman-Ford possui complexidade O(V²).';
+        }
+        if (str_contains($question, 'adversarial: entidade trocada')) {
+            return 'e[i][j] representa a soma das probabilidades no intervalo do Optimal BST.';
+        }
+        if (str_contains($question, 'adversarial: claim mista')) {
+            return 'Bellman-Ford tem complexidade O(VE) e foi criado por Wesley em 1999.';
+        }
         if (str_contains($question, 'wesley')) {
             return 'Wesley criou o Bellman-Ford em 1999.';
         }
@@ -83,6 +96,26 @@ $dataset = new EvaluationDataset([
     new EvaluationCase(
         id: 'Afirmação inventada',
         question: 'Quem criou o algoritmo Wesley?',
+        relevantDocumentIds: ['algorithms'],
+    ),
+    new EvaluationCase(
+        id: 'Adversarial: negação de fato correto',
+        question: 'Adversarial: negação. Qual é a complexidade do Bellman-Ford?',
+        relevantDocumentIds: ['algorithms'],
+    ),
+    new EvaluationCase(
+        id: 'Adversarial: número ou complexidade alterada',
+        question: 'Adversarial: complexidade alterada. Qual é a complexidade do Bellman-Ford?',
+        relevantDocumentIds: ['algorithms'],
+    ),
+    new EvaluationCase(
+        id: 'Adversarial: entidade trocada',
+        question: 'Adversarial: entidade trocada. O que representa w[i][j] no Optimal BST?',
+        relevantDocumentIds: ['optimal-bst'],
+    ),
+    new EvaluationCase(
+        id: 'Adversarial: claim apoiada e claim inventada',
+        question: 'Adversarial: claim mista. Informe a complexidade e a autoria do Bellman-Ford.',
         relevantDocumentIds: ['algorithms'],
     ),
 ], 'Qualidade determinística da resposta');

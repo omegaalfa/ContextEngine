@@ -37,11 +37,15 @@ final readonly class ReciprocalRankFusion
                     'score' => 0.0,
                     'distance' => $result->distance,
                     'matches' => [],
+                    'lexicalScore' => null,
                 ];
                 $rank = $offset + 1;
                 $aggregate[$id]['score'] += $weight / ($this->rankConstant + $rank);
                 $aggregate[$id]['distance'] = min($aggregate[$id]['distance'], $result->distance);
                 $aggregate[$id]['matches'][] = new QueryMatch($query, $rank, $result->distance);
+                if ($result->lexicalScore !== null) {
+                    $aggregate[$id]['lexicalScore'] = max($aggregate[$id]['lexicalScore'] ?? 0.0, $result->lexicalScore);
+                }
             }
         }
         uasort(
@@ -62,7 +66,7 @@ final readonly class ReciprocalRankFusion
                 $item['score'],
                 $item['matches'],
                 $result->provenance,
-                $result->lexicalScore,
+                $item['lexicalScore'],
             );
         }
         return $fused;

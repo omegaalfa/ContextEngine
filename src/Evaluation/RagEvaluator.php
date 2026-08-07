@@ -125,7 +125,8 @@ final readonly class RagEvaluator
     private function passes(array $scores): bool
     {
         foreach ($scores as $name => $score) {
-            if (($name === 'no_evidence' || str_starts_with($name, 'chunk_') || str_starts_with($name, 'document_') || $name === 'evidence_recall') && !$score->passed) {
+            if (($name === 'no_evidence' || str_starts_with($name, 'chunk_') || str_starts_with($name, 'document_') || $name === 'evidence_recall')
+                && !str_ends_with($name, '_hit_at_1') && !$score->passed) {
                 return false;
             }
         }
