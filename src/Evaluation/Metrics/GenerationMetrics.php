@@ -9,5 +9,7 @@ final readonly class GenerationMetrics
     public function __construct(
         public ?float $exactMatch = null,
         public ?float $containsExpectedTerms = null,
+        public ?float $strictExactMatch = null,
+        public ?float $normalizedExactMatch = null,
     ) {}
 }

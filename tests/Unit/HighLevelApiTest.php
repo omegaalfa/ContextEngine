@@ -47,6 +47,17 @@ final class HighLevelApiTest extends TestCase
         $this->assertInstanceOf(ContextEngineContext::class, $engine);
     }
 
+    public function testEnvironmentCompositionSeparatesEmbeddingAndLanguageModels(): void
+    {
+        $context = ContextEngine::create()->build();
+        $property = new \ReflectionProperty($context->rag, 'model');
+        $model = $property->getValue($context->rag);
+
+        self::assertInstanceOf(OllamaLanguageModel::class, $model);
+        self::assertSame('llama3.1:8b', $model->model);
+        self::assertNotSame($context->embeddings->space()->model, $model->model);
+    }
+
     public function testFluentOverridesTakePrecedenceOverEnvironmentConfig(): void
     {
         $engine = ContextEngine::create()
@@ -115,6 +126,16 @@ final class HighLevelApiTest extends TestCase
 
         self::assertInstanceOf(OpenAILanguageModel::class, $model);
         self::assertSame('gpt-4.1', $model->model);
+    }
+
+    public function testHybridRetrievalAppliesConfiguredRankingWeights(): void
+    {
+        $context = ContextEngine::create()
+            ->retrieval(hybridSearch: true, vectorWeight: 0.4, lexicalWeight: 1.2)
+            ->build();
+        $property = new \ReflectionProperty($context->retriever, 'rankingWeights');
+
+        self::assertSame(['vector' => 0.4, 'lexical' => 1.2], $property->getValue($context->retriever));
     }
 
     public function testPublicHighLevelActionsDelegateToExistingPipelines(): void

@@ -16,6 +16,9 @@ final readonly class RetrievalDiagnostics
      * @param list<string> $discardedByBudgetChunkIds
      * @param array<string, float> $timingsMilliseconds
      * @param list<ContextSelectionDiagnostic> $contextSelection
+     * @param list<string> $expandedChunkIds
+     * @param list<string> $relevanceSelectedChunkIds
+     * @param list<string> $evidenceDiscardedChunkIds
      */
     public function __construct(
         public string $originalQuestion,
@@ -31,5 +34,8 @@ final readonly class RetrievalDiagnostics
         public int $contextCharacters,
         public array $timingsMilliseconds,
         public array $contextSelection = [],
+        public array $expandedChunkIds = [],
+        public array $relevanceSelectedChunkIds = [],
+        public array $evidenceDiscardedChunkIds = [],
     ) {}
 }

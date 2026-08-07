@@ -253,8 +253,21 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
                 ? (float) $row['ts_rank']
                 : 0.0;
             $safeRank = max(0.0, $rank);
+            if ($safeRank <= 0.0) {
+                continue;
+            }
             $pseudoDistance = 1.0 / (1.0 + $safeRank);
-            $found[] = $this->resultFromRow($row, $pseudoDistance);
+            $base = $this->resultFromRow($row, $pseudoDistance);
+            $found[] = new VectorSearchResult(
+                $base->chunk,
+                $base->distance,
+                $base->documentVersion,
+                $base->neighbor,
+                $base->fusionScore,
+                $base->matches,
+                $base->provenance,
+                $safeRank,
+            );
         }
 
         return $found;

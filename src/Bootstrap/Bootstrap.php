@@ -18,6 +18,7 @@ use Omegaalfa\ContextEngine\Rag\FixedNoEvidencePolicy;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
 use Omegaalfa\ContextEngine\Retrieval\ContextRelevancePolicy;
 use Omegaalfa\ContextEngine\Retrieval\HeuristicQueryRewriter;
+use Omegaalfa\ContextEngine\Retrieval\HybridEvidencePolicy;
 use Omegaalfa\ContextEngine\Retrieval\IdentityQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
 use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
@@ -36,9 +37,7 @@ final class Bootstrap
     /**
      *
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * @param ContextEngineConfig $config
@@ -88,7 +87,7 @@ final class Bootstrap
             fusedLimit: $config->fusedLimit,
             contextChunkLimit: $config->contextChunkLimit,
             maximumContextCharacters: $config->maximumContextCharacters,
-            contextRelevancePolicy: $config->adaptiveContextSelection
+            contextRelevancePolicy: $config->adaptiveContextSelection && !$config->hybridSearch
                 ? new ContextRelevancePolicy(
                     maximumDistanceGap: $config->contextMaximumDistanceGap,
                     minimumSources: $config->contextMinimumSources,
@@ -97,6 +96,11 @@ final class Bootstrap
                 )
                 : null,
             lexicalStore: self::resolveLexicalStore($store, $config->hybridSearch),
+            rankingWeights: [
+                'vector' => $config->vectorRankingWeight,
+                'lexical' => $config->lexicalRankingWeight,
+            ],
+            evidencePolicy: $config->hybridSearch ? new HybridEvidencePolicy() : null,
         );
         $ingestion = new IngestionPipeline(
             splitter: new StructuralTextSplitter(new CharacterLimitStrategy($config->chunkSize)),

@@ -34,6 +34,7 @@ use Omegaalfa\ContextEngine\Rag\RagExecution;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
 use Omegaalfa\ContextEngine\Retrieval\ContextRelevancePolicy;
 use Omegaalfa\ContextEngine\Retrieval\HeuristicQueryRewriter;
+use Omegaalfa\ContextEngine\Retrieval\HybridEvidencePolicy;
 use Omegaalfa\ContextEngine\Retrieval\IdentityQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
 use Omegaalfa\ContextEngine\Retrieval\RetrievalPolicy;
@@ -55,9 +56,7 @@ final class ContextEngine
     private function __construct(
         private ContextEngineConfig $config,
         private ?Closure            $languageModelFactory = null,
-    )
-    {
-    }
+    ) {}
 
     public static function create(): self
     {
@@ -90,8 +89,7 @@ final class ContextEngine
         string $embeddingModel,
         string $languageModel,
         int    $embeddingDimensions = 1024,
-    ): self
-    {
+    ): self {
         $this->overrides['provider'] = new ProviderConfig(
             provider: 'ollama',
             baseUrl: $baseUrl,
@@ -107,8 +105,7 @@ final class ContextEngine
         string $apiKey,
         string $model,
         string $baseUrl = 'https://api.openai.com/v1',
-    ): self
-    {
+    ): self {
         $this->overrides['provider'] = new ProviderConfig(
             provider: 'openai',
             apiKey: $apiKey,
@@ -123,8 +120,7 @@ final class ContextEngine
         string $apiKey,
         string $model = 'gpt-4.1-mini',
         string $baseUrl = 'https://api.openai.com/v1',
-    ): self
-    {
+    ): self {
         $this->overrides['openAiLanguageModel'] = new ProviderConfig(
             provider: 'openai',
             apiKey: $apiKey,
@@ -140,8 +136,7 @@ final class ContextEngine
         ?int $concurrency = null,
         ?int $chunkSize = null,
         ?int $chunkOverlap = null,
-    ): self
-    {
+    ): self {
         $this->overrides['ingestion'] = new HighLevelIngestionConfig(
             batchSize: $batchSize,
             concurrency: $concurrency,
@@ -159,8 +154,9 @@ final class ContextEngine
         ?int   $contextChunkLimit = null,
         ?float $maximumDistance = null,
         ?bool  $hybridSearch = null,
-    ): self
-    {
+        ?float $vectorWeight = null,
+        ?float $lexicalWeight = null,
+    ): self {
         $this->overrides['retrieval'] = new RetrievalConfig(
             heuristicQueryPlanning: $heuristicQueryPlanning,
             retrievalLimit: $retrievalLimit,
@@ -168,6 +164,8 @@ final class ContextEngine
             contextChunkLimit: $contextChunkLimit,
             maximumDistance: $maximumDistance,
             hybridSearch: $hybridSearch,
+            vectorWeight: $vectorWeight,
+            lexicalWeight: $lexicalWeight,
         );
 
         return $this;
@@ -257,7 +255,7 @@ final class ContextEngine
         $openAiLanguageModel = $this->openAiLanguageModelConfig();
 
         if ($providerConfig?->provider === 'ollama') {
-            $model = $providerConfig->languageModel ?? $config->ollama->model;
+            $model = $providerConfig->languageModel ?? $config->ollama->languageModel;
             $baseUrl = $providerConfig->baseUrl ?? $config->ollama->baseUrl;
 
             return static fn (AsyncHttpClient $http): LanguageModel => new OllamaLanguageModel(
@@ -276,7 +274,7 @@ final class ContextEngine
                 ?? $providerConfig->baseUrl
                 ?? 'https://api.openai.com/v1';
 
-            return static fn(AsyncHttpClient $http): LanguageModel => new OpenAILanguageModel(
+            return static fn (AsyncHttpClient $http): LanguageModel => new OpenAILanguageModel(
                 apiKey: $apiKey,
                 model: $model,
                 client: $http,
@@ -286,7 +284,7 @@ final class ContextEngine
 
         return static function (AsyncHttpClient $http) use ($config): LanguageModel {
             return new OllamaLanguageModel(
-                model: $config->ollama->model,
+                model: $config->ollama->languageModel,
                 client: $http,
                 baseUrl: $config->ollama->baseUrl,
             );
@@ -337,7 +335,7 @@ final class ContextEngine
             fusedLimit: $config->fusedLimit,
             contextChunkLimit: $config->contextChunkLimit,
             maximumContextCharacters: $config->maximumContextCharacters,
-            contextRelevancePolicy: $config->adaptiveContextSelection
+            contextRelevancePolicy: $config->adaptiveContextSelection && !$config->hybridSearch
                 ? new ContextRelevancePolicy(
                     maximumDistanceGap: $config->contextMaximumDistanceGap,
                     minimumSources: $config->contextMinimumSources,
@@ -346,6 +344,11 @@ final class ContextEngine
                 )
                 : null,
             lexicalStore: self::resolveLexicalStore($store, $config->hybridSearch),
+            rankingWeights: [
+                'vector' => $config->vectorRankingWeight,
+                'lexical' => $config->lexicalRankingWeight,
+            ],
+            evidencePolicy: $config->hybridSearch ? new HybridEvidencePolicy() : null,
         );
         $ingestion = new IngestionPipeline(
             splitter: new StructuralTextSplitter(new CharacterLimitStrategy($config->chunkSize)),
@@ -403,6 +406,8 @@ final class ContextEngine
         $contextChunkLimit = $retrievalConfig !== null && $retrievalConfig->contextChunkLimit !== null ? $retrievalConfig->contextChunkLimit : $base->contextChunkLimit;
         $maximumDistance = $retrievalConfig !== null && $retrievalConfig->maximumDistance !== null ? $retrievalConfig->maximumDistance : $base->maximumDistance;
         $hybridSearch = $retrievalConfig !== null && $retrievalConfig->hybridSearch !== null ? $retrievalConfig->hybridSearch : $base->hybridSearch;
+        $vectorRankingWeight = $retrievalConfig !== null && $retrievalConfig->vectorWeight !== null ? $retrievalConfig->vectorWeight : $base->vectorRankingWeight;
+        $lexicalRankingWeight = $retrievalConfig !== null && $retrievalConfig->lexicalWeight !== null ? $retrievalConfig->lexicalWeight : $base->lexicalRankingWeight;
 
         return new ContextEngineConfig(
             database: $database,
@@ -428,6 +433,8 @@ final class ContextEngine
             contextMaximumSources: $base->contextMaximumSources,
             contextPreferSameDocument: $base->contextPreferSameDocument,
             hybridSearch: $hybridSearch,
+            vectorRankingWeight: $vectorRankingWeight,
+            lexicalRankingWeight: $lexicalRankingWeight,
             noEvidenceMessage: $base->noEvidenceMessage,
         );
     }

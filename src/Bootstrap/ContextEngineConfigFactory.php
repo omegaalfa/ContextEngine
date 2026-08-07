@@ -15,9 +15,7 @@ final class ContextEngineConfigFactory
     /**
      *
      */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 
     /**
      * Reads an environment already populated by the process or EnvLoader.
@@ -38,6 +36,7 @@ final class ContextEngineConfigFactory
                 model: self::string('CONTEXT_ENGINE_OLLAMA_EMBEDDING_MODEL', 'bge-m3'),
                 dimensions: self::integer('CONTEXT_ENGINE_OLLAMA_EMBEDDING_DIMENSIONS', 1024),
                 baseUrl: self::string('CONTEXT_ENGINE_OLLAMA_URL', 'http://127.0.0.1:11434'),
+                languageModel: self::string('CONTEXT_ENGINE_OLLAMA_MODEL', 'llama3.1:8b'),
             ),
             collection: self::string('CONTEXT_ENGINE_COLLECTION', 'default'),
             status: self::string('CONTEXT_ENGINE_STATUS', 'active'),
@@ -60,6 +59,8 @@ final class ContextEngineConfigFactory
             contextMaximumSources: self::integer('CONTEXT_ENGINE_CONTEXT_MAXIMUM_SOURCES', 5),
             contextPreferSameDocument: self::boolean('CONTEXT_ENGINE_CONTEXT_PREFER_SAME_DOCUMENT', true),
             hybridSearch: self::boolean('CONTEXT_ENGINE_HYBRID_SEARCH', false),
+            vectorRankingWeight: self::float('CONTEXT_ENGINE_VECTOR_RANKING_WEIGHT', 0.5),
+            lexicalRankingWeight: self::float('CONTEXT_ENGINE_LEXICAL_RANKING_WEIGHT', 1.0),
             noEvidenceMessage: self::string(
                 'CONTEXT_ENGINE_NO_EVIDENCE_MESSAGE',
                 'Não encontrei evidências suficientes no contexto recuperado para responder a essa pergunta.',

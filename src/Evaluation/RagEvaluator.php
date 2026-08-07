@@ -78,17 +78,22 @@ final readonly class RagEvaluator
                 passed: $applicable !== [] && !array_any($applicable, static fn ($score): bool => !$score->passed),
                 scores: $scores,
                 retrieval: new RetrievalMetrics(
-                    $scores['recall']->value ?? null,
-                    $scores['precision']->value ?? null,
-                    $scores['mrr']->value ?? null,
-                    $scores['hit_rate']->value ?? null,
+                    $scores['chunk_recall']->value ?? null,
+                    $scores['chunk_precision']->value ?? null,
+                    $scores['chunk_mrr']->value ?? null,
+                    $scores['chunk_hit_rate']->value ?? null,
                 ),
                 generation: new GenerationMetrics(
-                    $scores['exact_match']->value ?? null,
+                    $scores['normalized_exact_match']->value ?? null,
                     $scores['contains_expected_terms']->value ?? null,
+                    $scores['strict_exact_match']->value ?? null,
+                    $scores['normalized_exact_match']->value ?? null,
                 ),
                 durationMilliseconds: self::elapsed($started),
                 execution: $execution,
+                status: $applicable === []
+                    ? EvaluationStatus::NOT_APPLICABLE
+                    : (array_any($applicable, static fn ($score): bool => !$score->passed) ? EvaluationStatus::FAILED : EvaluationStatus::PASSED),
             );
         } catch (Throwable $exception) {
             return new EvaluationResult(
@@ -99,6 +104,7 @@ final readonly class RagEvaluator
                 generation: new GenerationMetrics(),
                 durationMilliseconds: self::elapsed($started),
                 error: $exception::class.': '.$exception->getMessage(),
+                status: EvaluationStatus::ERROR,
             );
         }
     }

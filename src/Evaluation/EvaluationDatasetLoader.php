@@ -26,11 +26,13 @@ final class EvaluationDatasetLoader
                 id: self::string($row, 'id', $offset),
                 question: self::string($row, 'question', $offset),
                 expectedAnswer: self::optionalString($row, 'expectedAnswer', $offset),
-                relevantChunkIds: self::stringList($row, 'relevantChunkIds', $offset),
-                relevantDocumentIds: self::stringList($row, 'relevantDocumentIds', $offset),
+                relevantChunkIds: self::optionalStringList($row, 'relevantChunkIds', $offset),
+                relevantDocumentIds: self::optionalStringList($row, 'relevantDocumentIds', $offset),
                 metadata: self::metadata($row, $offset),
                 expectedTerms: self::stringList($row, 'expectedTerms', $offset),
                 tenantId: self::optionalString($row, 'tenantId', $offset),
+                expectedTermGroups: self::stringGroups($row, 'expectedTermGroups', $offset),
+                expectNoEvidence: self::boolean($row, 'expectNoEvidence', $offset),
             );
         }
 
@@ -78,6 +80,45 @@ final class EvaluationDatasetLoader
         $value = $row[$key] ?? [];
         if (!is_array($value) || !array_is_list($value) || array_any($value, static fn ($item): bool => !is_string($item))) {
             throw new RuntimeException("Evaluation field '{$key}' at offset {$offset} must be a string list.");
+        }
+        return $value;
+    }
+
+    /**
+     * @param array<mixed> $row
+     * @return list<string>|null
+     */
+    private static function optionalStringList(array $row, string $key, int $offset): ?array
+    {
+        return array_key_exists($key, $row) ? self::stringList($row, $key, $offset) : null;
+    }
+
+    /**
+     * @param array<mixed> $row
+     * @return list<list<string>>
+     */
+    private static function stringGroups(array $row, string $key, int $offset): array
+    {
+        $groups = $row[$key] ?? [];
+        if (!is_array($groups) || !array_is_list($groups)) {
+            throw new RuntimeException("Evaluation field '{$key}' at offset {$offset} must be a list of string lists.");
+        }
+        $result = [];
+        foreach ($groups as $group) {
+            if (!is_array($group) || !array_is_list($group) || $group === [] || array_any($group, static fn ($term): bool => !is_string($term))) {
+                throw new RuntimeException("Evaluation field '{$key}' at offset {$offset} contains an invalid group.");
+            }
+            $result[] = $group;
+        }
+        return $result;
+    }
+
+    /** @param array<mixed> $row */
+    private static function boolean(array $row, string $key, int $offset): bool
+    {
+        $value = $row[$key] ?? false;
+        if (!is_bool($value)) {
+            throw new RuntimeException("Evaluation field '{$key}' at offset {$offset} must be boolean.");
         }
         return $value;
     }

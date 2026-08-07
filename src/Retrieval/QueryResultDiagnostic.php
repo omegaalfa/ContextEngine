@@ -13,5 +13,6 @@ final readonly class QueryResultDiagnostic
         public string $documentId,
         public int $position,
         public float $distance,
+        public ?float $lexicalScore = null,
     ) {}
 }

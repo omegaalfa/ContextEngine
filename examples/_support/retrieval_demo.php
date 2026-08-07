@@ -279,6 +279,14 @@ final class DemoEmbeddingProvider implements EmbeddingProvider
 
 final class DemoInMemoryStore implements NeighborAwareVectorStore, LexicalSearchStore
 {
+    /** @var array<string, true> */
+    private const LEXICAL_STOP_WORDS = [
+        'a' => true, 'as' => true, 'como' => true, 'da' => true, 'das' => true,
+        'de' => true, 'do' => true, 'dos' => true, 'e' => true, 'em' => true,
+        'explique' => true, 'funciona' => true, 'o' => true, 'os' => true,
+        'para' => true, 'por' => true, 'qual' => true, 'que' => true, 'uma' => true, 'é' => true,
+        'algoritmo' => true, 'classe' => true, 'complexidade' => true,
+    ];
     /** @var list<EmbeddedChunk> */
     private array $chunks = [];
 
@@ -332,8 +340,11 @@ final class DemoInMemoryStore implements NeighborAwareVectorStore, LexicalSearch
     public function searchLexical(LexicalSearchQuery $query): array
     {
         $scored = [];
-        $queryTokens = $this->tokens($query->terms);
-        $queryTokenCount = max(1, count($queryTokens));
+        $queryTokens = $this->lexicalTokens($query->terms);
+        if ($queryTokens === []) {
+            return [];
+        }
+        $queryTokenCount = count($queryTokens);
 
         foreach ($this->chunks as $embedded) {
             $chunk = $embedded->chunk;
@@ -347,7 +358,7 @@ final class DemoInMemoryStore implements NeighborAwareVectorStore, LexicalSearch
                 continue;
             }
 
-            $contentTokens = $this->tokens($chunk->content);
+            $contentTokens = $this->lexicalTokens($chunk->content);
             $contentLookup = array_fill_keys($contentTokens, true);
 
             $hits = 0.0;
@@ -372,7 +383,7 @@ final class DemoInMemoryStore implements NeighborAwareVectorStore, LexicalSearch
 
             $scored[] = [
                 'score' => $score,
-                'result' => new VectorSearchResult($chunk, $distance, 'v1'),
+                'result' => new VectorSearchResult($chunk, $distance, 'v1', lexicalScore: $score),
             ];
         }
 
@@ -416,6 +427,15 @@ final class DemoInMemoryStore implements NeighborAwareVectorStore, LexicalSearch
         );
 
         return $neighbors;
+    }
+
+    /** @return list<string> */
+    private function lexicalTokens(string $text): array
+    {
+        return array_values(array_filter(
+            $this->tokens($text),
+            static fn (string $token): bool => !isset(self::LEXICAL_STOP_WORDS[$token]),
+        ));
     }
 
     public function deleteChunk(ChunkDeleteQuery $query): int

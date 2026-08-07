@@ -17,3 +17,23 @@ Corrigir item 1.1 (duplicação) primeiro — é risco de manutenção ativo e b
 Implementar item "Prioridade 1.1" (busca híbrida) usando hybrid-search-skeleton.md como guia.
 Retomar os demais itens da Parte 1 (1.2, 1.3, 1.4) como tarefas pequenas e independentes.
 Seguir Prioridade 1 → 2 → 3 do roadmap conforme capacidade.
+
+
+examples/advanced-retrieval/ (ou equivalente) contendo exemplos independentes, como:
+
+01-vector-search.php — demonstra apenas a busca vetorial.
+02-lexical-search.php — demonstra apenas a busca lexical.
+03-multi-query.php — mostra as consultas geradas pelo planejador heurístico e seus resultados.
+04-rrf.php — exibe os rankings individuais e o ranking final após o Reciprocal Rank Fusion.
+05-context-expansion.php — mostra a recuperação de chunks vizinhos.
+06-hybrid-search.php — compara busca vetorial, lexical e híbrida usando a mesma pergunta.
+07-diagnostics.php — imprime todas as estatísticas e diagnósticos do retrieval.
+08-end-to-end-rag.php — executa o pipeline completo (planejamento → retrieval → RRF → expansão → seleção de contexto → LLM).
+
+Cada exemplo deve:
+
+ser executável diretamente com php examples/...;
+imprimir claramente cada etapa do pipeline;
+mostrar o tempo de execução, quantidade de documentos encontrados e chunks selecionados;
+usar perguntas diferentes (conceituais, geração de código, identificadores como ERR_PAYMENT_1047, SKUs, classes, funções etc.);
+ser amplamente comentado para servir também como documentação prática da biblioteca.

@@ -18,12 +18,14 @@ final readonly class VectorSearchResult
         public ?float $fusionScore = null,
         public array $matches = [],
         public ?VersionedSourceProvenance $provenance = null,
+        public ?float $lexicalScore = null,
     ) {
         if (!is_finite($distance) || $distance < 0) {
             throw new InvalidArgumentException('Vector distance must be finite and non-negative.');
         }
         if ($documentVersion !== null && trim($documentVersion) === ''
-            || $fusionScore !== null && (!is_finite($fusionScore) || $fusionScore < 0)) {
+            || $fusionScore !== null && (!is_finite($fusionScore) || $fusionScore < 0)
+            || $lexicalScore !== null && (!is_finite($lexicalScore) || $lexicalScore < 0)) {
             throw new InvalidArgumentException('Search result diagnostics are invalid.');
         }
     }

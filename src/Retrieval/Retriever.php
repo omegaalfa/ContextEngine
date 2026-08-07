@@ -47,6 +47,8 @@ final readonly class Retriever
      * @param ContextRelevancePolicy|null $contextRelevancePolicy
      * @param VersionSelectionPolicy|null $versionSelectionPolicy
      * @param LexicalSearchStore|null $lexicalStore
+     * @param array<string, float> $rankingWeights
+     * @param HybridEvidencePolicy|null $evidencePolicy
      */
     public function __construct(
         private EmbeddingProvider       $embeddings,
@@ -63,11 +65,17 @@ final readonly class Retriever
         private ?ContextRelevancePolicy $contextRelevancePolicy = null,
         private ?VersionSelectionPolicy $versionSelectionPolicy = null,
         private ?LexicalSearchStore     $lexicalStore = null,
-    )
-    {
+        private array                   $rankingWeights = [],
+        private ?HybridEvidencePolicy  $evidencePolicy = null,
+    ) {
         $this->queryRewriter = $queryRewriter ?? new IdentityQueryRewriter();
         $this->neighborExpansion = $neighborExpansion ?? new NeighborExpansion();
         $this->fusion = $fusion ?? new ReciprocalRankFusion();
+        foreach ($rankingWeights as $source => $weight) {
+            if (!in_array($source, ['vector', 'lexical'], true) || !is_finite($weight) || $weight < 0) {
+                throw new \InvalidArgumentException('Ranking weights support finite non-negative vector and lexical values.');
+            }
+        }
     }
 
     /** @return list<VectorSearchResult> */
@@ -133,19 +141,25 @@ final readonly class Retriever
                 $uniqueChunkIds[$result->chunk->id] = true;
             }
         }
-        $fused = $this->fusion->fuse($rankings, $this->fusedLimit ?? $this->policy->limit);
+        $weights = [];
+        foreach (array_keys($rankings) as $ranking) {
+            $weights[$ranking] = (float) ($this->rankingWeights[$ranking === self::LEXICAL_RANKING_KEY ? 'lexical' : 'vector'] ?? 1.0);
+        }
+        $fused = $this->fusion->fuse($rankings, $this->fusedLimit ?? $this->policy->limit, $weights);
         $fusionTime = self::elapsed($fusionStarted);
+        $adaptive = $this->contextRelevancePolicy === null
+            ? ['selected' => $fused, 'decisions' => []]
+            : new AdaptiveContextSelector($this->contextRelevancePolicy)->select($question->content, $fused);
+        $evidence = $this->evidencePolicy?->select($question->content, $adaptive['selected'])
+            ?? ['selected' => $adaptive['selected'], 'discarded' => []];
         $expansionStarted = hrtime(true);
-        [$expanded, $neighborIds] = $this->expand($question, $fused);
+        [$expanded, $neighborIds] = $this->expand($question, $evidence['selected']);
         $expansion = self::elapsed($expansionStarted);
         $selectionStarted = hrtime(true);
-        $adaptive = $this->contextRelevancePolicy === null
-            ? ['selected' => $expanded, 'decisions' => []]
-            : new AdaptiveContextSelector($this->contextRelevancePolicy)->select($question->content, $expanded);
         $selection = new ContextSelector(
             $this->contextChunkLimit ?? $this->policy->limit,
             $this->maximumContextCharacters,
-        )->select($adaptive['selected']);
+        )->select($expanded);
         $selectionDecisions = $this->finalDecisions(
             $adaptive['decisions'],
             $selection['discardReasons'],
@@ -158,9 +172,9 @@ final readonly class Retriever
             $resultsByQuery,
             null,
             $rawCount - count($uniqueChunkIds),
-            array_map(static fn(VectorSearchResult $result): string => $result->chunk->id, $fused),
+            array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $fused),
             $neighborIds,
-            array_map(static fn(VectorSearchResult $result): string => $result->chunk->id, $selection['selected']),
+            array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $selection['selected']),
             $selection['discarded'],
             $selection['characters'],
             [
@@ -173,6 +187,9 @@ final readonly class Retriever
                 'total' => self::elapsed($totalStarted),
             ],
             $selectionDecisions,
+            array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $expanded),
+            array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $adaptive['selected']),
+            $evidence['discarded'],
         );
         return new RetrievalOutcome($selection['selected'], $diagnostics);
     }
@@ -184,13 +201,14 @@ final readonly class Retriever
     private function toQueryDiagnostics(string $query, array $results): array
     {
         return array_map(
-            static fn(VectorSearchResult $result, int $offset): QueryResultDiagnostic => new QueryResultDiagnostic(
+            static fn (VectorSearchResult $result, int $offset): QueryResultDiagnostic => new QueryResultDiagnostic(
                 $query,
                 $offset + 1,
                 $result->chunk->id,
                 $result->chunk->documentId,
                 $result->chunk->position,
                 $result->distance,
+                $result->lexicalScore,
             ),
             $results,
             array_keys($results),
@@ -208,7 +226,7 @@ final readonly class Retriever
             return [];
         }
         return array_map(
-            static fn(ContextSelectionDiagnostic $decision): ContextSelectionDiagnostic => isset($budgetDiscardReasons[$decision->chunkId])
+            static fn (ContextSelectionDiagnostic $decision): ContextSelectionDiagnostic => isset($budgetDiscardReasons[$decision->chunkId])
                 ? new ContextSelectionDiagnostic(
                     $decision->chunkId,
                     false,
@@ -228,7 +246,7 @@ final readonly class Retriever
         if (!$this->neighborExpansion->enabled() || !$this->store instanceof NeighborAwareVectorStore) {
             return [$hits, []];
         }
-        $rankedIds = array_fill_keys(array_map(static fn(VectorSearchResult $hit): string => $hit->chunk->id, $hits), true);
+        $rankedIds = array_fill_keys(array_map(static fn (VectorSearchResult $hit): string => $hit->chunk->id, $hits), true);
         $seen = [];
         $expanded = [];
         $neighborIds = [];
@@ -263,7 +281,7 @@ final readonly class Retriever
                 }
                 usort(
                     $group,
-                    static fn(VectorSearchResult $a, VectorSearchResult $b): int => $a->chunk->position <=> $b->chunk->position
+                    static fn (VectorSearchResult $a, VectorSearchResult $b): int => $a->chunk->position <=> $b->chunk->position
                 );
             }
             foreach ($group as $candidate) {

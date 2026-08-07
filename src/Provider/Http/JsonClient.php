@@ -58,4 +58,5 @@ final readonly class JsonClient
         }
         return $object;
     }
+
 }

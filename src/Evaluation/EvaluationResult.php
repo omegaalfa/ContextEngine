@@ -21,5 +21,6 @@ final readonly class EvaluationResult
         public float $durationMilliseconds,
         public ?RagExecution $execution = null,
         public ?string $error = null,
+        public EvaluationStatus $status = EvaluationStatus::NOT_APPLICABLE,
     ) {}
 }

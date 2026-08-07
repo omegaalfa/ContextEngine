@@ -9,8 +9,11 @@ final class TextComparison
     public static function normalize(string $text): string
     {
         $text = mb_strtolower(trim($text));
+        if (class_exists(\Normalizer::class)) {
+            $text = \Normalizer::normalize($text, \Normalizer::FORM_C) ?: $text;
+        }
         $text = preg_replace('/[^\p{L}\p{N}\s]/u', ' ', $text) ?? $text;
 
-        return preg_replace('/\s+/u', ' ', $text) ?? $text;
+        return trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
     }
 }

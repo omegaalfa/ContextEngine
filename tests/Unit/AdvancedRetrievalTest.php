@@ -21,6 +21,7 @@ use Omegaalfa\ContextEngine\Rag\FixedNoEvidencePolicy;
 use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Rag\RagPipeline;
 use Omegaalfa\ContextEngine\Retrieval\HeuristicQueryRewriter;
+use Omegaalfa\ContextEngine\Retrieval\HybridEvidencePolicy;
 use Omegaalfa\ContextEngine\Retrieval\IdentityQueryRewriter;
 use Omegaalfa\ContextEngine\Retrieval\LexicalSearchQuery;
 use Omegaalfa\ContextEngine\Retrieval\NeighborExpansion;
@@ -40,6 +41,22 @@ use PHPUnit\Framework\TestCase;
 
 final class AdvancedRetrievalTest extends TestCase
 {
+    public function testHybridEvidenceRejectsIsolatedUnsupportedNamedTerm(): void
+    {
+        $result = new VectorSearchResult(new Chunk('weak', 'document', 'tenant', 'Conteúdo sobre ordenação.', 0), 0.4);
+        $selection = new HybridEvidencePolicy()->select('Como funciona o algoritmo Wesley?', [$result]);
+
+        self::assertSame([], $selection['selected']);
+        self::assertSame(['weak'], $selection['discarded']);
+    }
+
+    public function testHybridEvidenceKeepsNamedTermPresentInContent(): void
+    {
+        $result = new VectorSearchResult(new Chunk('avl', 'document', 'tenant', 'Uma árvore AVL mantém balanceamento.', 0), 0.4);
+
+        self::assertSame([$result], new HybridEvidencePolicy()->select('O que é uma árvore AVL?', [$result])['selected']);
+    }
+
     public function testIdentityAndHeuristicPlanningAlwaysPreserveOriginal(): void
     {
         $question = new Question('Converta para PHP a função Python optimal_bst com e[i,j].', 'tenant');

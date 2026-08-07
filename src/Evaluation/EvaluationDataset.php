@@ -25,6 +25,17 @@ final readonly class EvaluationDataset implements Countable, IteratorAggregate
         if (count($ids) !== count(array_unique($ids))) {
             throw new InvalidArgumentException('Evaluation case ids must be unique.');
         }
+        foreach ($cases as $case) {
+            if (!$case->expectNoEvidence
+                && !$case->hasChunkGroundTruth
+                && !$case->hasDocumentGroundTruth
+                && $case->expectedAnswer === null
+                && $case->expectedTerms === []
+                && $case->expectedTermGroups === []
+                && $case->relevantEvidence === []) {
+                throw new InvalidArgumentException("Positive evaluation case '{$case->id}' must define at least one expectation.");
+            }
+        }
         $this->cases = $cases;
     }
 

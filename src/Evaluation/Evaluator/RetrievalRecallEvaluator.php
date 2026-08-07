@@ -6,6 +6,7 @@ namespace Omegaalfa\ContextEngine\Evaluation\Evaluator;
 
 use Omegaalfa\ContextEngine\Evaluation\EvaluationCase;
 use Omegaalfa\ContextEngine\Evaluation\Metrics\EvaluationScore;
+use Omegaalfa\ContextEngine\Evaluation\Support\TextComparison;
 use Omegaalfa\ContextEngine\Rag\RagExecution;
 
 final readonly class RetrievalRecallEvaluator implements CaseEvaluator
@@ -13,19 +14,47 @@ final readonly class RetrievalRecallEvaluator implements CaseEvaluator
     /** @return list<EvaluationScore> */
     public function evaluate(EvaluationCase $case, RagExecution $execution): array
     {
-        $expected = $case->relevantChunkIds;
-        $retrieved = $execution->diagnostics->retrieval->selectedChunkIds;
+        $scores = [];
+        if ($case->hasChunkGroundTruth) {
+            $scores = [...$scores, ...self::scores('chunk', $case->relevantChunkIds, $execution->diagnostics->retrieval->selectedChunkIds)];
+        }
+        if ($case->hasDocumentGroundTruth) {
+            $documents = array_map(static fn ($source): string => $source->chunk->documentId, $execution->answer->sources);
+            $scores = [...$scores, ...self::scores('document', $case->relevantDocumentIds, $documents)];
+        }
+        if ($case->relevantEvidence !== []) {
+            $matched = 0;
+            foreach ($case->relevantEvidence as $evidence) {
+                if (array_any($execution->answer->sources, static function ($source) use ($evidence): bool {
+                    if ($source->chunk->documentId !== $evidence->documentId) {
+                        return false;
+                    }
+                    $content = TextComparison::normalize($source->chunk->content);
+                    return array_all($evidence->requiredTextGroups, static fn (array $group): bool => array_any(
+                        $group,
+                        static fn (string $term): bool => str_contains($content, TextComparison::normalize($term)),
+                    ));
+                })) {
+                    ++$matched;
+                }
+            }
+            $value = $matched / count($case->relevantEvidence);
+            $scores[] = new EvaluationScore('evidence_recall', $value, $value >= 1.0);
+        }
+        if ($case->expectNoEvidence) {
+            $passed = $execution->diagnostics->retrieval->selectedChunkIds === [];
+            $scores[] = new EvaluationScore('no_evidence', $passed ? 1.0 : 0.0, $passed);
+        }
+        return $scores;
+    }
 
-        if ($expected === [] && $case->relevantDocumentIds !== []) {
-            $expected = $case->relevantDocumentIds;
-            $retrieved = array_map(
-                static fn ($source): string => $source->chunk->documentId,
-                $execution->answer->sources,
-            );
-        }
-        if ($expected === []) {
-            return [];
-        }
+    /**
+     * @param list<string> $expected
+     * @param list<string> $retrieved
+     * @return list<EvaluationScore>
+     */
+    private static function scores(string $prefix, array $expected, array $retrieved): array
+    {
 
         $expected = array_values(array_unique($expected));
         $retrieved = array_values(array_unique($retrieved));
@@ -44,10 +73,10 @@ final readonly class RetrievalRecallEvaluator implements CaseEvaluator
         $reciprocalRank = $firstRank === null ? 0.0 : 1 / $firstRank;
 
         return [
-            new EvaluationScore('recall', $recall, $recall >= 1.0),
-            new EvaluationScore('precision', $precision, $hits !== []),
-            new EvaluationScore('mrr', $reciprocalRank, $hits !== []),
-            new EvaluationScore('hit_rate', $hitRate, $hits !== []),
+            new EvaluationScore($prefix.'_recall', $recall, $recall >= 1.0),
+            new EvaluationScore($prefix.'_precision', $precision, $hits !== []),
+            new EvaluationScore($prefix.'_mrr', $reciprocalRank, $hits !== []),
+            new EvaluationScore($prefix.'_hit_rate', $hitRate, $hits !== []),
         ];
     }
 }

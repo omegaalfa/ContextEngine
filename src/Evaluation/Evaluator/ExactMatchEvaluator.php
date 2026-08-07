@@ -17,9 +17,13 @@ final readonly class ExactMatchEvaluator implements CaseEvaluator
         if ($case->expectedAnswer === null) {
             return [];
         }
-        $matches = TextComparison::normalize($execution->answer->content)
+        $strict = $execution->answer->content === $case->expectedAnswer;
+        $normalized = TextComparison::normalize($execution->answer->content)
             === TextComparison::normalize($case->expectedAnswer);
 
-        return [new EvaluationScore('exact_match', $matches ? 1.0 : 0.0, $matches)];
+        return [
+            new EvaluationScore('strict_exact_match', $strict ? 1.0 : 0.0, $strict),
+            new EvaluationScore('normalized_exact_match', $normalized ? 1.0 : 0.0, $normalized),
+        ];
     }
 }

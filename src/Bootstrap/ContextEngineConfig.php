@@ -48,6 +48,8 @@ final readonly class ContextEngineConfig
         public int            $contextMaximumSources = 5,
         public bool           $contextPreferSameDocument = true,
         public bool           $hybridSearch = false,
+        public float          $vectorRankingWeight = 0.5,
+        public float          $lexicalRankingWeight = 1.0,
         public string         $noEvidenceMessage = 'Não encontrei evidências suficientes no contexto recuperado para responder a essa pergunta.',
     ) {
         if (trim($collection) === '' || trim($status) === '') {
@@ -77,6 +79,10 @@ final readonly class ContextEngineConfig
         }
         if (trim($noEvidenceMessage) === '') {
             throw new InvalidArgumentException('No-evidence message cannot be empty.');
+        }
+        if (!is_finite($vectorRankingWeight) || $vectorRankingWeight < 0
+            || !is_finite($lexicalRankingWeight) || $lexicalRankingWeight < 0) {
+            throw new InvalidArgumentException('Ranking weights must be finite and non-negative.');
         }
     }
 }

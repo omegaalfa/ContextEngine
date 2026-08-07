@@ -5,9 +5,9 @@ A busca híbrida combina duas fontes de ranking:
 - busca vetorial via embeddings;
 - busca lexical/full-text via PostgreSQL.
 
-A fusão usa Reciprocal Rank Fusion (RRF):
+A fusão usa Reciprocal Rank Fusion (RRF) ponderado:
 
-- score = sum(1 / (k + rank));
+- score = sum(weight / (k + rank));
 - a ordem final depende da posição em cada ranking;
 - não depende do valor absoluto de distância.
 
@@ -43,10 +43,12 @@ Por variavel de ambiente:
 
 - CONTEXT_ENGINE_HYBRID_SEARCH=0 (default)
 - CONTEXT_ENGINE_HYBRID_SEARCH=1 (habilitado)
+- CONTEXT_ENGINE_VECTOR_RANKING_WEIGHT=0.5
+- CONTEXT_ENGINE_LEXICAL_RANKING_WEIGHT=1.0
 
 Por API fluente:
 
-- retrieval(..., hybridSearch: true)
+- retrieval(..., hybridSearch: true, vectorWeight: 0.5, lexicalWeight: 1.0)
 
 Precedencia:
 
@@ -61,9 +63,12 @@ Quando habilitado, a perna lexical aparece em:
 
 - hitsPerQuery na chave __lexical__;
 - resultsByQuery na chave __lexical__;
+- lexicalScore em cada resultado lexical;
 - timingsMilliseconds.lexicalRetrieval.
 
 Como a fusao e RRF, a participacao lexical tambem aparece nos QueryMatch dos resultados fundidos, com query = __lexical__.
+
+No modo híbrido, a High-Level API desativa a `ContextRelevancePolicy` baseada em diferença de distância vetorial. Depois da fusão, a expansão é aplicada somente aos anchors preservados, antes do orçamento final.
 
 ## Limitacoes
 

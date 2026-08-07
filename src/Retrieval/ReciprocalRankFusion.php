@@ -16,12 +16,20 @@ final readonly class ReciprocalRankFusion
     }
     /**
      * @param array<string, list<VectorSearchResult>> $rankings
+     * @param array<string, float> $weights
      * @return list<VectorSearchResult>
      */
-    public function fuse(array $rankings, int $limit): array
+    public function fuse(array $rankings, int $limit, array $weights = []): array
     {
         $aggregate = [];
         foreach ($rankings as $query => $results) {
+            $weight = $weights[$query] ?? 1.0;
+            if (!is_finite($weight) || $weight < 0) {
+                throw new InvalidArgumentException('RRF ranking weights must be finite and non-negative.');
+            }
+            if ($weight === 0.0) {
+                continue;
+            }
             foreach ($results as $offset => $result) {
                 $id = $result->chunk->id;
                 $aggregate[$id] ??= [
@@ -31,7 +39,7 @@ final readonly class ReciprocalRankFusion
                     'matches' => [],
                 ];
                 $rank = $offset + 1;
-                $aggregate[$id]['score'] += 1 / ($this->rankConstant + $rank);
+                $aggregate[$id]['score'] += $weight / ($this->rankConstant + $rank);
                 $aggregate[$id]['distance'] = min($aggregate[$id]['distance'], $result->distance);
                 $aggregate[$id]['matches'][] = new QueryMatch($query, $rank, $result->distance);
             }
@@ -54,6 +62,7 @@ final readonly class ReciprocalRankFusion
                 $item['score'],
                 $item['matches'],
                 $result->provenance,
+                $result->lexicalScore,
             );
         }
         return $fused;
