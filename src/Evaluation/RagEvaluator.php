@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Omegaalfa\ContextEngine\Evaluation;
 
 use InvalidArgumentException;
-use Omegaalfa\ContextEngine\Evaluation\Evaluator\AnswerRelevanceEvaluator;
 use Omegaalfa\ContextEngine\Evaluation\Evaluator\AnswerEvaluator;
+use Omegaalfa\ContextEngine\Evaluation\Evaluator\AnswerRelevanceEvaluator;
 use Omegaalfa\ContextEngine\Evaluation\Evaluator\CaseEvaluator;
 use Omegaalfa\ContextEngine\Evaluation\Evaluator\CorrectnessEvaluator;
 use Omegaalfa\ContextEngine\Evaluation\Evaluator\DeterministicTextualGroundednessEvaluator;

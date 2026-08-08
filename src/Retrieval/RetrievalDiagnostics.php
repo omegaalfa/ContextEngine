@@ -50,5 +50,9 @@ final readonly class RetrievalDiagnostics
         public int $rerankerFallbackCount = 0,
         public bool $rerankerTimedOut = false,
         public ?string $rerankerError = null,
+        public bool $abstained = false,
+        public ?string $abstentionReason = null,
+        /** @var array<string, scalar|null> */
+        public array $abstentionSignals = [],
     ) {}
 }

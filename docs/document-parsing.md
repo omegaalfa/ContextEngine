@@ -130,6 +130,11 @@ PlainTextParser
 | PHP | `PhpParser` | classes, interfaces, traits, enums, funções e métodos quando detectáveis |
 | PDF | `PdfParser` | headings, parágrafos, listas, tabelas e código por heurísticas determinísticas; páginas como metadata |
 
+> [!IMPORTANT]
+> `PhpParser` faz ingestão estrutural consciente de código com `token_get_all()`. Isso **não é uma AST** nem Code Intelligence: relações entre símbolos, chamadas, herança, implementações, FQCN e grafo de dependências não são resolvidos.
+
+No PDF, “tabela” significa detecção estrutural e preservação do texto disponível. Não significa reconstrução perfeita de células quando o layout foi perdido na extração.
+
 ### Exemplo de seleção
 
 ```php

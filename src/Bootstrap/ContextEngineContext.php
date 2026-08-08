@@ -33,9 +33,7 @@ final readonly class ContextEngineContext
         public RagPipeline       $rag,
         public EmbeddingProvider $embeddings,
         public VectorStore       $store,
-    )
-    {
-    }
+    ) {}
 
     /**
      * @param DocumentLoader $loader

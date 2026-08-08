@@ -7,7 +7,9 @@ namespace Omegaalfa\ContextEngine\Evaluation\Evaluator;
 use Omegaalfa\ContextEngine\Evaluation\EvaluationCase;
 use Omegaalfa\ContextEngine\Evaluation\GroundednessResult;
 use Omegaalfa\ContextEngine\Evaluation\Metrics\EvaluationScore;
+use Omegaalfa\ContextEngine\Evaluation\Support\PortugueseTextAnalysisProfile;
 use Omegaalfa\ContextEngine\Evaluation\Support\SignificantTerms;
+use Omegaalfa\ContextEngine\Evaluation\Support\TextAnalysisProfile;
 use Omegaalfa\ContextEngine\Evaluation\Support\TextComparison;
 use Omegaalfa\ContextEngine\Rag\RagExecution;
 
@@ -19,7 +21,15 @@ use Omegaalfa\ContextEngine\Rag\RagExecution;
  */
 final readonly class DeterministicTextualGroundednessEvaluator implements AnswerEvaluator
 {
-    public function __construct(private float $minimumCoverage = 0.6, private float $passingScore = 0.8) {}
+    private TextAnalysisProfile $profile;
+
+    public function __construct(
+        private float $minimumCoverage = 0.6,
+        private float $passingScore = 0.8,
+        ?TextAnalysisProfile $profile = null,
+    ) {
+        $this->profile = $profile ?? new PortugueseTextAnalysisProfile();
+    }
 
     /** Retorna a nota e um GroundednessResult rastreável em EvaluationScore::details. */
     public function evaluate(EvaluationCase $case, RagExecution $execution): ?EvaluationScore
@@ -29,7 +39,7 @@ final readonly class DeterministicTextualGroundednessEvaluator implements Answer
         }
         $supported = [];
         $unsupported = [];
-        foreach (self::claims($execution->answer->content) as $claim) {
+        foreach ($this->profile->claims($execution->answer->content) as $claim) {
             $evidence = $this->evidence($claim, $execution);
             if ($evidence === null) {
                 $unsupported[] = $claim;
@@ -47,15 +57,6 @@ final readonly class DeterministicTextualGroundednessEvaluator implements Answer
         );
     }
 
-    /** @return list<string> */
-    private static function claims(string $answer): array
-    {
-        return array_values(array_filter(array_map(
-            'trim',
-            preg_split('/(?<=[.!?;])\s+|\R+|\s+e\s+(?=(?:foi|é|era|possui|tem|representa|criou|aceita)\b)/iu', trim($answer)) ?: [],
-        ), static fn (string $claim): bool => $claim !== ''));
-    }
-
     /** @return array{evidence:string,chunkId:string}|null */
     private function evidence(string $claim, RagExecution $execution): ?array
     {
@@ -64,7 +65,7 @@ final readonly class DeterministicTextualGroundednessEvaluator implements Answer
         $protected = SignificantTerms::protected($claim);
         foreach ($execution->answer->sources as $source) {
             $content = TextComparison::normalize($source->chunk->content);
-            if (self::negated($claimNormalized) !== self::negated($content)) {
+            if ($this->profile->isNegated($claimNormalized) !== $this->profile->isNegated($content)) {
                 continue;
             }
             if (str_contains($content, $claimNormalized)) {
@@ -75,21 +76,16 @@ final readonly class DeterministicTextualGroundednessEvaluator implements Answer
             }
             $matched = count(array_filter($terms, static fn (string $term): bool => str_contains($content, $term)));
             if ($terms !== [] && $matched / count($terms) >= $this->minimumCoverage) {
-                return ['evidence' => self::excerpt($source->chunk->content, $terms), 'chunkId' => $source->chunk->id];
+                return ['evidence' => $this->excerpt($source->chunk->content, $terms), 'chunkId' => $source->chunk->id];
             }
         }
         return null;
     }
 
-    private static function negated(string $text): bool
-    {
-        return preg_match('/\b(?:não|nunca|jamais|sem)\b/u', $text) === 1;
-    }
-
     /** @param list<string> $terms */
-    private static function excerpt(string $content, array $terms): string
+    private function excerpt(string $content, array $terms): string
     {
-        foreach (preg_split('/(?<=[.!?;])\s+|\R+/u', $content) ?: [] as $sentence) {
+        foreach ($this->profile->sentences($content) as $sentence) {
             $normalized = TextComparison::normalize($sentence);
             if (array_any($terms, static fn (string $term): bool => str_contains($normalized, $term))) {
                 return trim($sentence);

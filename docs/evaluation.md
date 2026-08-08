@@ -304,6 +304,17 @@ Cada avaliador recebe o `EvaluationCase` e o `RagExecution` produzido pelo pipel
 
 ## 💻 Baseline de algoritmos
 
+### Candidate pool e abstenção
+
+```bash
+php examples/evaluation/compare-candidate-pool-live.php
+php examples/evaluation/evaluate-abstention-live.php
+```
+
+O primeiro compara pools 5, 10, 20, 30 e 50 sem alterar defaults. O segundo mistura perguntas legítimas e casos negativos e imprime accuracy, falsos positivos, falsos negativos e os sinais da `AbstentionPolicy`. Ambos exigem embeddings e PostgreSQL/pgvector; se a infraestrutura estiver indisponível, encerram com erro em vez de fabricar métricas.
+
+O groundedness usa `PortugueseTextAnalysisProfile` por padrão. Para inglês, injete `EnglishTextAnalysisProfile`. Os perfis explicitam separação de claims, frases e negações simples; não são NLP completo nem detecção automática de idioma.
+
 ### Retrieval offline
 
 ```bash

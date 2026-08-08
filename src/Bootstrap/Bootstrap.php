@@ -101,6 +101,9 @@ final class Bootstrap
                 'lexical' => $config->lexicalRankingWeight,
             ],
             evidencePolicy: $config->hybridSearch ? new HybridEvidencePolicy() : null,
+            lexicalCandidateLimit: $config->lexicalCandidateLimit,
+            rerankerCandidateLimit: $config->rerankerCandidateLimit,
+            textSearchConfiguration: $config->textSearchConfiguration,
         );
         $ingestion = new IngestionPipeline(
             splitter: new StructuralTextSplitter(new CharacterLimitStrategy($config->chunkSize)),

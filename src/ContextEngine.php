@@ -52,15 +52,10 @@ final class ContextEngine
 {
     /** @var array<string, mixed> */
     private array $overrides = [];
+    private ?ContextEngineContext $contextInstance = null;
 
-    private function __construct(
-        private ContextEngineConfig $config,
-        private ?Closure            $languageModelFactory = null,
-    ) {}
-
-    public static function create(): self
+    private function __construct(private ContextEngineConfig $config, private ?Closure $languageModelFactory = null)
     {
-        return new self(ContextEngineConfigFactory::fromEnvironment());
     }
 
     public function tenant(string $tenant): self
@@ -84,12 +79,8 @@ final class ContextEngine
         return $this;
     }
 
-    public function ollama(
-        string $baseUrl,
-        string $embeddingModel,
-        string $languageModel,
-        int    $embeddingDimensions = 1024,
-    ): self {
+    public function ollama(string $baseUrl, string $embeddingModel, string $languageModel, int $embeddingDimensions = 1024): self
+    {
         $this->overrides['provider'] = new ProviderConfig(
             provider: 'ollama',
             baseUrl: $baseUrl,
@@ -101,42 +92,32 @@ final class ContextEngine
         return $this;
     }
 
-    public function openAi(
-        string $apiKey,
-        string $model,
-        string $baseUrl = 'https://api.openai.com/v1',
-    ): self {
+    public function openAi(string $apiKey, string $model, string $baseUrl = 'https://api.openai.com/v1'): self
+    {
         $this->overrides['provider'] = new ProviderConfig(
             provider: 'openai',
+            baseUrl: $baseUrl,
             apiKey: $apiKey,
             model: $model,
-            baseUrl: $baseUrl,
         );
 
         return $this;
     }
 
-    public function openAiLanguageModel(
-        string $apiKey,
-        string $model = 'gpt-4.1-mini',
-        string $baseUrl = 'https://api.openai.com/v1',
-    ): self {
+    public function openAiLanguageModel(string $apiKey, string $model = 'gpt-4.1-mini', string $baseUrl = 'https://api.openai.com/v1'): self
+    {
         $this->overrides['openAiLanguageModel'] = new ProviderConfig(
             provider: 'openai',
+            baseUrl: $baseUrl,
             apiKey: $apiKey,
             model: $model,
-            baseUrl: $baseUrl,
         );
 
         return $this;
     }
 
-    public function ingestion(
-        ?int $batchSize = null,
-        ?int $concurrency = null,
-        ?int $chunkSize = null,
-        ?int $chunkOverlap = null,
-    ): self {
+    public function ingestion(?int $batchSize = null, ?int $concurrency = null, ?int $chunkSize = null, ?int $chunkOverlap = null): self
+    {
         $this->overrides['ingestion'] = new HighLevelIngestionConfig(
             batchSize: $batchSize,
             concurrency: $concurrency,
@@ -148,15 +129,19 @@ final class ContextEngine
     }
 
     public function retrieval(
-        ?bool  $heuristicQueryPlanning = null,
-        ?int   $retrievalLimit = null,
-        ?int   $fusedLimit = null,
-        ?int   $contextChunkLimit = null,
-        ?float $maximumDistance = null,
-        ?bool  $hybridSearch = null,
-        ?float $vectorWeight = null,
-        ?float $lexicalWeight = null,
-    ): self {
+        ?bool   $heuristicQueryPlanning = null,
+        ?int    $retrievalLimit = null,
+        ?int    $fusedLimit = null,
+        ?int    $contextChunkLimit = null,
+        ?float  $maximumDistance = null,
+        ?bool   $hybridSearch = null,
+        ?float  $vectorWeight = null,
+        ?float  $lexicalWeight = null,
+        ?int    $lexicalCandidateLimit = null,
+        ?int    $rerankerCandidateLimit = null,
+        ?string $textSearchConfiguration = null
+    ): self
+    {
         $this->overrides['retrieval'] = new RetrievalConfig(
             heuristicQueryPlanning: $heuristicQueryPlanning,
             retrievalLimit: $retrievalLimit,
@@ -166,6 +151,9 @@ final class ContextEngine
             hybridSearch: $hybridSearch,
             vectorWeight: $vectorWeight,
             lexicalWeight: $lexicalWeight,
+            lexicalCandidateLimit: $lexicalCandidateLimit,
+            rerankerCandidateLimit: $rerankerCandidateLimit,
+            textSearchConfiguration: $textSearchConfiguration
         );
 
         return $this;
@@ -176,6 +164,20 @@ final class ContextEngine
         $this->overrides['redis'] = new RedisConfig(host: $host, port: $port, password: $password);
 
         return $this;
+    }
+
+    public function ingest(DocumentLoader $loader): IngestionReport
+    {
+        return $this->context()->ingestion->ingest($loader);
+    }
+
+    private function context(): ContextEngineContext
+    {
+        if (!isset($this->contextInstance)) {
+            $this->contextInstance = $this->build();
+        }
+
+        return $this->contextInstance;
     }
 
     public function build(): ContextEngineContext
@@ -191,63 +193,96 @@ final class ContextEngine
         return $this->composeOllama($config, $languageModelFactory);
     }
 
-    public function ingest(DocumentLoader $loader): IngestionReport
+    private function resolveConfig(): ContextEngineConfig
     {
-        return $this->context()->ingestion->ingest($loader);
-    }
+        $base = $this->config;
+        $providerConfig = $this->providerConfig();
+        $ingestionConfig = $this->ingestionConfig();
+        $retrievalConfig = $this->retrievalConfig();
 
-    /** @return list<VectorSearchResult> */
-    public function search(Question|string $question, ?string $tenantId = null): array
-    {
-        return $this->context()->retriever->retrieve($this->question($question, $tenantId));
-    }
+        $collection = is_string($this->overrides['collection'] ?? null) ? $this->overrides['collection'] : $base->collection;
+        $status = is_string($this->overrides['status'] ?? null) ? $this->overrides['status'] : $base->status;
+        $database = $base->database;
+        $ollama = $base->ollama;
 
-    public function ask(Question|string $question, ?string $tenantId = null): Answer
-    {
-        return $this->context()->rag->ask($question, $tenantId);
-    }
-
-    /** @return iterable<\Omegaalfa\ContextEngine\Rag\AnswerDelta> */
-    public function stream(Question|string $question, ?string $tenantId = null): iterable
-    {
-        return $this->context()->rag->stream($question, $tenantId);
-    }
-
-    /** @return list<VectorSearchResult> */
-    public function searchWithDiagnostics(Question|string $question, ?string $tenantId = null): array
-    {
-        return $this->context()->retriever->retrieveWithDiagnostics($this->question($question, $tenantId))->results;
-    }
-
-    public function askWithDiagnostics(Question|string $question, ?string $tenantId = null): RagExecution
-    {
-        return $this->context()->rag->askWithDiagnostics($question, $tenantId);
-    }
-
-    public function withCustomComponents(Closure $factory): self
-    {
-        $this->overrides['customFactory'] = $factory;
-
-        return $this;
-    }
-
-    public function withLanguageModelFactory(Closure $factory): self
-    {
-        $this->languageModelFactory = $factory;
-
-        return $this;
-    }
-
-    private function context(): ContextEngineContext
-    {
-        if (!isset($this->contextInstance)) {
-            $this->contextInstance = $this->build();
+        if ($providerConfig instanceof ProviderConfig && $providerConfig->provider === 'ollama') {
+            $ollama = new OllamaConfig(
+                model: $providerConfig->embeddingModel ?? $base->ollama->model,
+                dimensions: $providerConfig->embeddingDimensions ?? $base->ollama->dimensions,
+                baseUrl: $providerConfig->baseUrl ?? $base->ollama->baseUrl,
+            );
         }
 
-        return $this->contextInstance;
+        $batchSize = $ingestionConfig !== null && $ingestionConfig->batchSize !== null ? $ingestionConfig->batchSize : $base->batchSize;
+        $concurrency = $ingestionConfig !== null && $ingestionConfig->concurrency !== null ? $ingestionConfig->concurrency : $base->concurrency;
+        $chunkSize = $ingestionConfig !== null && $ingestionConfig->chunkSize !== null ? $ingestionConfig->chunkSize : $base->chunkSize;
+        $overlap = $ingestionConfig !== null && $ingestionConfig->chunkOverlap !== null ? $ingestionConfig->chunkOverlap : $base->overlap;
+
+        $retrievalLimit = $retrievalConfig !== null && $retrievalConfig->retrievalLimit !== null ? $retrievalConfig->retrievalLimit : $base->retrievalLimit;
+        $heuristicQueryPlanning = $retrievalConfig !== null && $retrievalConfig->heuristicQueryPlanning !== null ? $retrievalConfig->heuristicQueryPlanning : $base->heuristicQueryPlanning;
+        $fusedLimit = $retrievalConfig !== null && $retrievalConfig->fusedLimit !== null ? $retrievalConfig->fusedLimit : $base->fusedLimit;
+        $contextChunkLimit = $retrievalConfig !== null && $retrievalConfig->contextChunkLimit !== null ? $retrievalConfig->contextChunkLimit : $base->contextChunkLimit;
+        $maximumDistance = $retrievalConfig !== null && $retrievalConfig->maximumDistance !== null ? $retrievalConfig->maximumDistance : $base->maximumDistance;
+        $hybridSearch = $retrievalConfig !== null && $retrievalConfig->hybridSearch !== null ? $retrievalConfig->hybridSearch : $base->hybridSearch;
+        $vectorRankingWeight = $retrievalConfig !== null && $retrievalConfig->vectorWeight !== null ? $retrievalConfig->vectorWeight : $base->vectorRankingWeight;
+        $lexicalRankingWeight = $retrievalConfig !== null && $retrievalConfig->lexicalWeight !== null ? $retrievalConfig->lexicalWeight : $base->lexicalRankingWeight;
+        $lexicalCandidateLimit = $retrievalConfig !== null && $retrievalConfig->lexicalCandidateLimit !== null ? $retrievalConfig->lexicalCandidateLimit : $base->lexicalCandidateLimit;
+        $rerankerCandidateLimit = $retrievalConfig !== null && $retrievalConfig->rerankerCandidateLimit !== null ? $retrievalConfig->rerankerCandidateLimit : $base->rerankerCandidateLimit;
+        $textSearchConfiguration = $retrievalConfig !== null && $retrievalConfig->textSearchConfiguration !== null ? $retrievalConfig->textSearchConfiguration : $base->textSearchConfiguration;
+
+        return new ContextEngineConfig(
+            database: $database,
+            ollama: $ollama,
+            collection: $collection,
+            status: $status,
+            batchSize: $batchSize,
+            concurrency: $concurrency,
+            chunkSize: $chunkSize,
+            overlap: $overlap,
+            retrievalLimit: $retrievalLimit,
+            retrievalMetric: $base->retrievalMetric,
+            maximumDistance: $maximumDistance,
+            heuristicQueryPlanning: $heuristicQueryPlanning,
+            neighborBefore: $base->neighborBefore,
+            neighborAfter: $base->neighborAfter,
+            fusedLimit: $fusedLimit,
+            contextChunkLimit: $contextChunkLimit,
+            maximumContextCharacters: $base->maximumContextCharacters,
+            adaptiveContextSelection: $base->adaptiveContextSelection,
+            contextMaximumDistanceGap: $base->contextMaximumDistanceGap,
+            contextMinimumSources: $base->contextMinimumSources,
+            contextMaximumSources: $base->contextMaximumSources,
+            contextPreferSameDocument: $base->contextPreferSameDocument,
+            hybridSearch: $hybridSearch,
+            vectorRankingWeight: $vectorRankingWeight,
+            lexicalRankingWeight: $lexicalRankingWeight,
+            noEvidenceMessage: $base->noEvidenceMessage,
+            lexicalCandidateLimit: $lexicalCandidateLimit,
+            rerankerCandidateLimit: $rerankerCandidateLimit,
+            textSearchConfiguration: $textSearchConfiguration,
+        );
     }
 
-    private ?ContextEngineContext $contextInstance = null;
+    private function providerConfig(): ?ProviderConfig
+    {
+        $provider = $this->overrides['provider'] ?? null;
+
+        return $provider instanceof ProviderConfig ? $provider : null;
+    }
+
+    private function ingestionConfig(): ?HighLevelIngestionConfig
+    {
+        $ingestion = $this->overrides['ingestion'] ?? null;
+
+        return $ingestion instanceof HighLevelIngestionConfig ? $ingestion : null;
+    }
+
+    private function retrievalConfig(): ?RetrievalConfig
+    {
+        $retrieval = $this->overrides['retrieval'] ?? null;
+
+        return $retrieval instanceof RetrievalConfig ? $retrieval : null;
+    }
 
     private function defaultLanguageModelFactory(ContextEngineConfig $config): Closure
     {
@@ -258,7 +293,7 @@ final class ContextEngine
             $model = $providerConfig->languageModel ?? $config->ollama->languageModel;
             $baseUrl = $providerConfig->baseUrl ?? $config->ollama->baseUrl;
 
-            return static fn (AsyncHttpClient $http): LanguageModel => new OllamaLanguageModel(
+            return static fn(AsyncHttpClient $http): LanguageModel => new OllamaLanguageModel(
                 model: $model,
                 client: $http,
                 baseUrl: $baseUrl,
@@ -274,7 +309,7 @@ final class ContextEngine
                 ?? $providerConfig->baseUrl
                 ?? 'https://api.openai.com/v1';
 
-            return static fn (AsyncHttpClient $http): LanguageModel => new OpenAILanguageModel(
+            return static fn(AsyncHttpClient $http): LanguageModel => new OpenAILanguageModel(
                 apiKey: $apiKey,
                 model: $model,
                 client: $http,
@@ -291,9 +326,13 @@ final class ContextEngine
         };
     }
 
-    private function composeOllama(ContextEngineConfig $config, Closure $languageModelFactory): ContextEngineContext
+    private function openAiLanguageModelConfig(): ?ProviderConfig
     {
-        return Bootstrap::create($config, $languageModelFactory);
+        $openAiLanguageModel = $this->overrides['openAiLanguageModel'] ?? null;
+
+        return $openAiLanguageModel instanceof ProviderConfig
+            ? $openAiLanguageModel
+            : null;
     }
 
     private function composeOpenAI(ContextEngineConfig $config, ProviderConfig $providerConfig, Closure $languageModelFactory): ContextEngineContext
@@ -349,6 +388,9 @@ final class ContextEngine
                 'lexical' => $config->lexicalRankingWeight,
             ],
             evidencePolicy: $config->hybridSearch ? new HybridEvidencePolicy() : null,
+            lexicalCandidateLimit: $config->lexicalCandidateLimit,
+            rerankerCandidateLimit: $config->rerankerCandidateLimit,
+            textSearchConfiguration: $config->textSearchConfiguration,
         );
         $ingestion = new IngestionPipeline(
             splitter: new StructuralTextSplitter(new CharacterLimitStrategy($config->chunkSize)),
@@ -375,98 +417,32 @@ final class ContextEngine
         );
     }
 
-    private function resolveConfig(): ContextEngineConfig
+    private static function resolveLexicalStore(object $store, bool $hybridSearch): ?LexicalSearchStore
     {
-        $base = $this->config;
-        $providerConfig = $this->providerConfig();
-        $ingestionConfig = $this->ingestionConfig();
-        $retrievalConfig = $this->retrievalConfig();
-
-        $collection = is_string($this->overrides['collection'] ?? null) ? $this->overrides['collection'] : $base->collection;
-        $status = is_string($this->overrides['status'] ?? null) ? $this->overrides['status'] : $base->status;
-        $database = $base->database;
-        $ollama = $base->ollama;
-
-        if ($providerConfig instanceof ProviderConfig && $providerConfig->provider === 'ollama') {
-            $ollama = new OllamaConfig(
-                model: $providerConfig->embeddingModel ?? $base->ollama->model,
-                dimensions: $providerConfig->embeddingDimensions ?? $base->ollama->dimensions,
-                baseUrl: $providerConfig->baseUrl ?? $base->ollama->baseUrl,
-            );
+        if (!$hybridSearch) {
+            return null;
+        }
+        if (!$store instanceof LexicalSearchStore) {
+            throw new InvalidArgumentException('Hybrid search requires a vector store that implements LexicalSearchStore.');
         }
 
-        $batchSize = $ingestionConfig !== null && $ingestionConfig->batchSize !== null ? $ingestionConfig->batchSize : $base->batchSize;
-        $concurrency = $ingestionConfig !== null && $ingestionConfig->concurrency !== null ? $ingestionConfig->concurrency : $base->concurrency;
-        $chunkSize = $ingestionConfig !== null && $ingestionConfig->chunkSize !== null ? $ingestionConfig->chunkSize : $base->chunkSize;
-        $overlap = $ingestionConfig !== null && $ingestionConfig->chunkOverlap !== null ? $ingestionConfig->chunkOverlap : $base->overlap;
-
-        $retrievalLimit = $retrievalConfig !== null && $retrievalConfig->retrievalLimit !== null ? $retrievalConfig->retrievalLimit : $base->retrievalLimit;
-        $heuristicQueryPlanning = $retrievalConfig !== null && $retrievalConfig->heuristicQueryPlanning !== null ? $retrievalConfig->heuristicQueryPlanning : $base->heuristicQueryPlanning;
-        $fusedLimit = $retrievalConfig !== null && $retrievalConfig->fusedLimit !== null ? $retrievalConfig->fusedLimit : $base->fusedLimit;
-        $contextChunkLimit = $retrievalConfig !== null && $retrievalConfig->contextChunkLimit !== null ? $retrievalConfig->contextChunkLimit : $base->contextChunkLimit;
-        $maximumDistance = $retrievalConfig !== null && $retrievalConfig->maximumDistance !== null ? $retrievalConfig->maximumDistance : $base->maximumDistance;
-        $hybridSearch = $retrievalConfig !== null && $retrievalConfig->hybridSearch !== null ? $retrievalConfig->hybridSearch : $base->hybridSearch;
-        $vectorRankingWeight = $retrievalConfig !== null && $retrievalConfig->vectorWeight !== null ? $retrievalConfig->vectorWeight : $base->vectorRankingWeight;
-        $lexicalRankingWeight = $retrievalConfig !== null && $retrievalConfig->lexicalWeight !== null ? $retrievalConfig->lexicalWeight : $base->lexicalRankingWeight;
-
-        return new ContextEngineConfig(
-            database: $database,
-            ollama: $ollama,
-            collection: $collection,
-            status: $status,
-            batchSize: $batchSize,
-            concurrency: $concurrency,
-            chunkSize: $chunkSize,
-            overlap: $overlap,
-            retrievalLimit: $retrievalLimit,
-            retrievalMetric: $base->retrievalMetric,
-            maximumDistance: $maximumDistance,
-            heuristicQueryPlanning: $heuristicQueryPlanning,
-            neighborBefore: $base->neighborBefore,
-            neighborAfter: $base->neighborAfter,
-            fusedLimit: $fusedLimit,
-            contextChunkLimit: $contextChunkLimit,
-            maximumContextCharacters: $base->maximumContextCharacters,
-            adaptiveContextSelection: $base->adaptiveContextSelection,
-            contextMaximumDistanceGap: $base->contextMaximumDistanceGap,
-            contextMinimumSources: $base->contextMinimumSources,
-            contextMaximumSources: $base->contextMaximumSources,
-            contextPreferSameDocument: $base->contextPreferSameDocument,
-            hybridSearch: $hybridSearch,
-            vectorRankingWeight: $vectorRankingWeight,
-            lexicalRankingWeight: $lexicalRankingWeight,
-            noEvidenceMessage: $base->noEvidenceMessage,
-        );
+        return $store;
     }
 
-    private function providerConfig(): ?ProviderConfig
+    private function composeOllama(ContextEngineConfig $config, Closure $languageModelFactory): ContextEngineContext
     {
-        $provider = $this->overrides['provider'] ?? null;
-
-        return $provider instanceof ProviderConfig ? $provider : null;
+        return Bootstrap::create($config, $languageModelFactory);
     }
 
-    private function ingestionConfig(): ?HighLevelIngestionConfig
+    public static function create(): self
     {
-        $ingestion = $this->overrides['ingestion'] ?? null;
-
-        return $ingestion instanceof HighLevelIngestionConfig ? $ingestion : null;
+        return new self(ContextEngineConfigFactory::fromEnvironment());
     }
 
-    private function retrievalConfig(): ?RetrievalConfig
+    /** @return list<VectorSearchResult> */
+    public function search(Question|string $question, ?string $tenantId = null): array
     {
-        $retrieval = $this->overrides['retrieval'] ?? null;
-
-        return $retrieval instanceof RetrievalConfig ? $retrieval : null;
-    }
-
-    private function openAiLanguageModelConfig(): ?ProviderConfig
-    {
-        $openAiLanguageModel = $this->overrides['openAiLanguageModel'] ?? null;
-
-        return $openAiLanguageModel instanceof ProviderConfig
-            ? $openAiLanguageModel
-            : null;
+        return $this->context()->retriever->retrieve($this->question($question, $tenantId));
     }
 
     private function question(Question|string $question, ?string $tenantId): Question
@@ -480,15 +456,39 @@ final class ContextEngine
         return new Question($question, $tenantId);
     }
 
-    private static function resolveLexicalStore(object $store, bool $hybridSearch): ?LexicalSearchStore
+    public function ask(Question|string $question, ?string $tenantId = null): Answer
     {
-        if (!$hybridSearch) {
-            return null;
-        }
-        if (!$store instanceof LexicalSearchStore) {
-            throw new InvalidArgumentException('Hybrid search requires a vector store that implements LexicalSearchStore.');
-        }
+        return $this->context()->rag->ask($question, $tenantId);
+    }
 
-        return $store;
+    /** @return iterable<\Omegaalfa\ContextEngine\Rag\AnswerDelta> */
+    public function stream(Question|string $question, ?string $tenantId = null): iterable
+    {
+        return $this->context()->rag->stream($question, $tenantId);
+    }
+
+    /** @return list<VectorSearchResult> */
+    public function searchWithDiagnostics(Question|string $question, ?string $tenantId = null): array
+    {
+        return $this->context()->retriever->retrieveWithDiagnostics($this->question($question, $tenantId))->results;
+    }
+
+    public function askWithDiagnostics(Question|string $question, ?string $tenantId = null): RagExecution
+    {
+        return $this->context()->rag->askWithDiagnostics($question, $tenantId);
+    }
+
+    public function withCustomComponents(Closure $factory): self
+    {
+        $this->overrides['customFactory'] = $factory;
+
+        return $this;
+    }
+
+    public function withLanguageModelFactory(Closure $factory): self
+    {
+        $this->languageModelFactory = $factory;
+
+        return $this;
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Retrieval;
 
+use Omegaalfa\ContextEngine\Contract\AbstentionPolicy;
 use Omegaalfa\ContextEngine\Contract\EmbeddingProvider;
 use Omegaalfa\ContextEngine\Contract\IdentifiedReranker;
 use Omegaalfa\ContextEngine\Contract\LexicalSearchStore;
@@ -11,8 +12,8 @@ use Omegaalfa\ContextEngine\Contract\NeighborAwareVectorStore;
 use Omegaalfa\ContextEngine\Contract\QueryRewriter;
 use Omegaalfa\ContextEngine\Contract\Reranker;
 use Omegaalfa\ContextEngine\Contract\VectorStore;
-use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Exception\RerankerException;
+use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Retrieval\LexicalSearchQuery;
 
 final readonly class Retriever
@@ -51,7 +52,7 @@ final readonly class Retriever
      * @param VersionSelectionPolicy|null $versionSelectionPolicy
      * @param LexicalSearchStore|null $lexicalStore
      * @param array<string, float> $rankingWeights
-     * @param HybridEvidencePolicy|null $evidencePolicy
+     * @param AbstentionPolicy|null $evidencePolicy
      * @param Reranker|null $reranker
      */
     public function __construct(
@@ -70,8 +71,11 @@ final readonly class Retriever
         private ?VersionSelectionPolicy $versionSelectionPolicy = null,
         private ?LexicalSearchStore     $lexicalStore = null,
         private array                   $rankingWeights = [],
-        private ?HybridEvidencePolicy  $evidencePolicy = null,
+        private ?AbstentionPolicy      $evidencePolicy = null,
         private ?Reranker              $reranker = null,
+        private ?int                   $lexicalCandidateLimit = null,
+        private ?int                   $rerankerCandidateLimit = null,
+        private string                 $textSearchConfiguration = 'portuguese',
     ) {
         $this->queryRewriter = $queryRewriter ?? new IdentityQueryRewriter();
         $this->neighborExpansion = $neighborExpansion ?? new NeighborExpansion();
@@ -80,6 +84,13 @@ final readonly class Retriever
             if (!in_array($source, ['vector', 'lexical'], true) || !is_finite($weight) || $weight < 0) {
                 throw new \InvalidArgumentException('Ranking weights support finite non-negative vector and lexical values.');
             }
+        }
+        if ($lexicalCandidateLimit !== null && ($lexicalCandidateLimit < 1 || $lexicalCandidateLimit > 100)
+            || $rerankerCandidateLimit !== null && $rerankerCandidateLimit < 1) {
+            throw new \InvalidArgumentException('Candidate limits must be positive and lexical limit cannot exceed 100.');
+        }
+        if (preg_match('/\A[a-z_][a-z0-9_]*\z/i', $textSearchConfiguration) !== 1) {
+            throw new \InvalidArgumentException('PostgreSQL text search configuration must be a safe identifier.');
         }
     }
 
@@ -123,10 +134,15 @@ final readonly class Retriever
             $lexicalQuery = new LexicalSearchQuery(
                 tenantId: $question->tenantId,
                 terms: $question->content,
-                policy: $this->policy,
+                policy: new RetrievalPolicy(
+                    $this->lexicalCandidateLimit ?? $this->policy->limit,
+                    $this->policy->metric,
+                    $this->policy->maximumDistance,
+                ),
                 collection: $this->collection,
                 status: $this->status,
                 versionSelectionPolicy: $this->versionSelectionPolicy,
+                textSearchConfiguration: $this->textSearchConfiguration,
             );
             $rankings[self::LEXICAL_RANKING_KEY] = $this->lexicalStore->searchLexical($lexicalQuery);
             $hits[self::LEXICAL_RANKING_KEY] = count($rankings[self::LEXICAL_RANKING_KEY]);
@@ -154,21 +170,24 @@ final readonly class Retriever
         $fusionTime = self::elapsed($fusionStarted);
         $rerankingStarted = hrtime(true);
         $rerankerFailure = null;
+        $rerankerCandidates = $this->reranker === null || $this->rerankerCandidateLimit === null
+            ? $fused
+            : array_slice($fused, 0, $this->rerankerCandidateLimit);
         try {
-            $reranked = $this->reranker?->rerank($question, $fused) ?? $fused;
+            $reranked = $this->reranker?->rerank($question, $rerankerCandidates) ?? $rerankerCandidates;
         } catch (RerankerException $exception) {
             $rerankerFailure = $exception;
-            $reranked = $fused;
+            $reranked = $rerankerCandidates;
         }
-        $this->validateReranked($fused, $reranked);
+        $this->validateReranked($rerankerCandidates, $reranked);
         $reranking = self::elapsed($rerankingStarted);
         $adaptive = $this->contextRelevancePolicy === null
             ? ['selected' => $reranked, 'decisions' => []]
             : new AdaptiveContextSelector($this->contextRelevancePolicy)->select($question->content, $reranked);
-        $evidence = $this->evidencePolicy?->select($question->content, $adaptive['selected'])
-            ?? ['selected' => $adaptive['selected'], 'discarded' => []];
+        $abstention = $this->evidencePolicy?->evaluate($question->content, $adaptive['selected'])
+            ?? new AbstentionDecision($adaptive['selected']);
         $expansionStarted = hrtime(true);
-        [$expanded, $neighborIds] = $this->expand($question, $evidence['selected']);
+        [$expanded, $neighborIds] = $this->expand($question, $abstention->selected);
         $expansion = self::elapsed($expansionStarted);
         $selectionStarted = hrtime(true);
         $selection = new ContextSelector(
@@ -205,11 +224,11 @@ final readonly class Retriever
             $selectionDecisions,
             array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $expanded),
             array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $adaptive['selected']),
-            $evidence['discarded'],
+            $abstention->discardedChunkIds,
             array_map(static fn (VectorSearchResult $result): string => $result->chunk->id, $reranked),
             $this->rerankDiagnostics($fused, $reranked),
             $this->reranker instanceof IdentifiedReranker ? $this->reranker->name() : ($this->reranker === null ? null : $this->reranker::class),
-            count($fused),
+            count($rerankerCandidates),
             count($reranked),
             $this->reranker instanceof IdentifiedReranker ? $this->reranker->provider() : null,
             $this->reranker instanceof IdentifiedReranker ? $this->reranker->model() : null,
@@ -217,6 +236,9 @@ final readonly class Retriever
             $rerankerFailure === null ? 0 : 1,
             $rerankerFailure === null ? false : $rerankerFailure->timedOut,
             $rerankerFailure === null ? null : $rerankerFailure->getMessage(),
+            $abstention->abstained(),
+            $abstention->reason,
+            $abstention->signals,
         );
         return new RetrievalOutcome($selection['selected'], $diagnostics);
     }

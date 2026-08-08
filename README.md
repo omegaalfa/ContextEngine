@@ -26,7 +26,7 @@ ContextEngine é uma biblioteca PHP para construir pipelines de RAG (*Retrieval-
 |---|---|
 | ✅ Pipeline incremental de ingestão | ⚠️ Loaders estruturados para HTML ou Markdown |
 | ✅ Busca vetorial e híbrida com PostgreSQL/pgvector | ⚠️ Embeddings Gemini |
-| ✅ RAG com resposta, fontes e abstenção | ⚠️ Reranker cross-encoder |
+| ✅ RAG com resposta, fontes e abstenção | ⚠️ Reranker cross-encoder local incluído no pacote |
 | ✅ Tenant, collection, status e versões | ⚠️ Judge semântico por LLM |
 | ✅ `EmbeddingSpace` e fingerprint | ⚠️ Streaming incremental ainda nao incluido em todos os providers |
 | ✅ Providers substituíveis por contratos | ⚠️ Interface web, API ou autenticação |
@@ -35,6 +35,9 @@ ContextEngine é uma biblioteca PHP para construir pipelines de RAG (*Retrieval-
 | ✅ Upsert idempotente por espaço vetorial | |
 | ✅ Ativação atômica de versões de documento | |
 | ✅ Multi-query, RRF, vizinhos e seleção adaptativa | |
+| ✅ Reranking opcional: textual e cross-encoder Cohere | |
+| ✅ Política de evidência para busca híbrida | |
+| ✅ Candidate pools independentes para vetor, lexical, RRF, reranker e contexto | |
 | ✅ Diagnósticos de retrieval/RAG | |
 | ✅ LLMs OpenAI, Ollama e Gemini | |
 
@@ -271,7 +274,8 @@ O pacote inclui `GeminiLanguageModel` para respostas completas. Embeddings Gemin
 
 ### Ainda não implementado
 
-- reranking e streaming incremental para providers que ainda nao suportam essa capacidade;
+- streaming incremental para providers que ainda não suportam essa capacidade;
+- cross-encoder local executado dentro da aplicação; o pacote inclui o adapter remoto `CohereReranker`;
 - OCR para PDFs escaneados e análise automática de capítulos;
 - loaders estruturados para HTML, Markdown e formatos de escritório.
 

@@ -7,15 +7,15 @@ namespace Omegaalfa\ContextEngine\Tests\Unit;
 use Omegaalfa\ContextEngine\Contract\StreamingLanguageModel;
 use Omegaalfa\ContextEngine\Provider\OpenAI\OpenAILanguageModel;
 use PHPUnit\Framework\TestCase;
-use ReflectionClass;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use ReflectionClass;
 
 final class ArchitectureTest extends TestCase
 {
     public function testOpenAiProviderClaimsStreamingCapability(): void
     {
-            self::assertTrue(is_a(OpenAILanguageModel::class, StreamingLanguageModel::class, true));
+        self::assertTrue(is_a(OpenAILanguageModel::class, StreamingLanguageModel::class, true));
     }
     public function testFutureAppearsOnlyInInfrastructureSource(): void
     {

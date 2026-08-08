@@ -15,11 +15,20 @@ use Omegaalfa\ContextEngine\Rag\Question;
  */
 final readonly class DeterministicTextualReranker implements IdentifiedReranker
 {
-    public function name(): string { return 'DeterministicTextualReranker'; }
+    public function name(): string
+    {
+        return 'DeterministicTextualReranker';
+    }
 
-    public function provider(): ?string { return null; }
+    public function provider(): ?string
+    {
+        return null;
+    }
 
-    public function model(): ?string { return null; }
+    public function model(): ?string
+    {
+        return null;
+    }
 
     public function rerank(Question $question, array $results): array
     {
@@ -44,7 +53,9 @@ final readonly class DeterministicTextualReranker implements IdentifiedReranker
                 ),
             ];
         }
-        usort($ranked, static fn (array $left, array $right): int =>
+        usort(
+            $ranked,
+            static fn (array $left, array $right): int =>
             $right['result']->rerankerScore <=> $left['result']->rerankerScore
             ?: $left['offset'] <=> $right['offset']
         );

@@ -209,10 +209,13 @@ $engine = ContextEngine::create()
     ->collection('algorithms')
     ->retrieval(
         heuristicQueryPlanning: true,
-        retrievalLimit: 8,
-        fusedLimit: 5,
+        retrievalLimit: 30,
+        lexicalCandidateLimit: 30,
+        fusedLimit: 30,
         contextChunkLimit: 5,
         maximumDistance: 0.60,
+        hybridSearch: true,
+        textSearchConfiguration: 'portuguese',
     )
     ->build();
 
@@ -221,6 +224,10 @@ $results = $engine->search(
     tenantId: 'empresa',
 );
 ```
+
+Os limites representam etapas diferentes: `retrievalLimit` controla candidatos vetoriais, `lexicalCandidateLimit` controla candidatos textuais, `fusedLimit` limita o RRF e `contextChunkLimit` limita as fontes finais. Quando a aplicação injeta um reranker customizado, `rerankerCandidateLimit` limita o lote entregue a ele. Todos os novos argumentos são opcionais; configurações antigas continuam válidas.
+
+`textSearchConfiguration` é o idioma/configuração full-text do PostgreSQL. Use somente uma configuração instalada, como `portuguese`, `english` ou `simple`. O valor é validado antes de entrar no SQL.
 
 ```php
 foreach ($results as $result) {

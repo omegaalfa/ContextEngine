@@ -22,8 +22,8 @@ final class PdfParserTest extends TestCase
             ['format' => 'pdf'],
         );
 
-        $tree = (new PdfParser())->parse($document);
-        $chunks = iterator_to_array((new StructuralTextSplitter(new CharacterLimitStrategy(500)))->split($document));
+        $tree = new PdfParser()->parse($document);
+        $chunks = iterator_to_array(new StructuralTextSplitter(new CharacterLimitStrategy(500))->split($document));
 
         self::assertCount(3, $tree->children);
         self::assertCount(1, $chunks);

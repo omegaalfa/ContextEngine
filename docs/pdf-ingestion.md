@@ -62,6 +62,10 @@ Document 3: páginas 7–8  ← janela final preservada
 
 > [!NOTE]
 > Janelas consecutivas ainda possuem uma fronteira. O desenho atual melhora a continuidade dentro da janela, mas não implementa sobreposição entre janelas de páginas.
+> Um parágrafo que atravesse exatamente essa fronteira ainda pode ser separado; não existe união genérica entre janelas.
+
+> [!WARNING]
+> Tabelas de PDF são reconhecidas e preservadas como texto por heurísticas. O ContextEngine não reconstrói perfeitamente células, linhas mescladas ou colunas quando o extrator perdeu o layout.
 
 ---
 

@@ -27,6 +27,9 @@ final readonly class TokenLimitStrategy implements ChunkingStrategy
 
     public function split(string $content): array
     {
-        return new CharacterLimitStrategy($this->limit * 4)->split($content);
+        $charactersPerToken = $this->estimator instanceof HeuristicTokenEstimator
+            ? $this->estimator->charactersPerToken
+            : 4;
+        return new CharacterLimitStrategy($this->limit * $charactersPerToken)->split($content);
     }
 }

@@ -15,5 +15,8 @@ final readonly class RetrievalConfig
         public ?bool $hybridSearch = null,
         public ?float $vectorWeight = null,
         public ?float $lexicalWeight = null,
+        public ?int $lexicalCandidateLimit = null,
+        public ?int $rerankerCandidateLimit = null,
+        public ?string $textSearchConfiguration = null,
     ) {}
 }

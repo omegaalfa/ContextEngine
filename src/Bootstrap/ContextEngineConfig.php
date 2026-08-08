@@ -51,6 +51,9 @@ final readonly class ContextEngineConfig
         public float          $vectorRankingWeight = 0.5,
         public float          $lexicalRankingWeight = 1.0,
         public string         $noEvidenceMessage = 'Não encontrei evidências suficientes no contexto recuperado para responder a essa pergunta.',
+        public ?int           $lexicalCandidateLimit = null,
+        public ?int           $rerankerCandidateLimit = null,
+        public string         $textSearchConfiguration = 'portuguese',
     ) {
         if (trim($collection) === '' || trim($status) === '') {
             throw new InvalidArgumentException('Collection and status cannot be empty.');
@@ -83,6 +86,13 @@ final readonly class ContextEngineConfig
         if (!is_finite($vectorRankingWeight) || $vectorRankingWeight < 0
             || !is_finite($lexicalRankingWeight) || $lexicalRankingWeight < 0) {
             throw new InvalidArgumentException('Ranking weights must be finite and non-negative.');
+        }
+        if ($lexicalCandidateLimit !== null && ($lexicalCandidateLimit < 1 || $lexicalCandidateLimit > 100)
+            || $rerankerCandidateLimit !== null && $rerankerCandidateLimit < 1) {
+            throw new InvalidArgumentException('Candidate limits are invalid.');
+        }
+        if (preg_match('/\A[a-z_][a-z0-9_]*\z/i', $textSearchConfiguration) !== 1) {
+            throw new InvalidArgumentException('PostgreSQL text search configuration must be a safe identifier.');
         }
     }
 }

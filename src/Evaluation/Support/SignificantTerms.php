@@ -21,7 +21,9 @@ final class SignificantTerms
     {
         $normalized = TextComparison::normalize($text);
         $tokens = preg_split('/\s+/u', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        return array_values(array_unique(array_filter($tokens, static fn (string $token): bool =>
+        return array_values(array_unique(array_filter(
+            $tokens,
+            static fn (string $token): bool =>
             !in_array($token, self::STOP_WORDS, true) && (mb_strlen($token) >= 3 || preg_match('/\d/u', $token) === 1)
         )));
     }

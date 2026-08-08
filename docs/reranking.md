@@ -53,6 +53,7 @@ $retriever = new Retriever(
     contextChunkLimit: 5,
     lexicalStore: $store,
     reranker: new DeterministicTextualReranker(),
+    rerankerCandidateLimit: 5,
 );
 ```
 
@@ -69,7 +70,7 @@ Ele é útil para:
 - demonstrar o contrato;
 - criar uma baseline antes de adotar cross-encoder.
 
-Ele **não é um reranker semântico forte**. Um cross-encoder futuro pode implementar o mesmo contrato sem alterar o pipeline.
+Ele **não é um reranker semântico forte**. Para cross-encoder remoto, o pacote inclui `CohereReranker`; outras implementações podem usar o mesmo contrato sem alterar o pipeline.
 
 ## 🔍 Diagnóstico completo
 

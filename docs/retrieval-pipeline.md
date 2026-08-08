@@ -73,7 +73,7 @@ e calcula uma ordem final combinando posição e repetição.
 
 O score acumula `1 / (60 + rank)`. Um chunk encontrado por várias consultas acumula score e preserva consultas, ranks e distâncias em `QueryMatch`. Empates usam menor distância e depois chunk ID.
 
-RRF não é busca híbrida. RRF combina listas de resultados. Busca híbrida, no roadmap, significa combinar busca vetorial com busca textual, como full-text PostgreSQL ou BM25.
+RRF não é, sozinho, uma busca híbrida: ele é o mecanismo que combina listas. No modo híbrido atual, essas listas vêm da busca vetorial e de `PgVectorStore::searchLexical()`. O RRF também continua útil para reunir resultados da pergunta original e de suas variações.
 
 ## 4. Limites da pipeline
 
@@ -81,8 +81,10 @@ Existem limites em etapas diferentes. Eles não são iguais:
 
 | Limite | Papel |
 |---|---|
-| `RetrievalPolicy::limit` | máximo por consulta vetorial |
+| `RetrievalPolicy::limit` | máximo por consulta vetorial; também é o fallback lexical compatível |
+| `lexicalCandidateLimit` | máximo da busca lexical, independente do vetor |
 | `fusedLimit` | máximo depois da fusão RRF |
+| `rerankerCandidateLimit` | quantos candidatos do RRF chegam ao reranker |
 | `contextChunkLimit` | máximo final de chunks enviados ao prompt |
 | `maximumContextCharacters` | tamanho máximo somado dos conteúdos finais |
 
@@ -90,8 +92,18 @@ Fluxo resumido:
 
 ```text
 planejar → buscar → filtrar → RRF/deduplicar
-→ fusedLimit → vizinhos → seleção adaptativa → orçamento → prompt
+→ fusedLimit → rerankerCandidateLimit → relevância → abstenção → vizinhos → orçamento → prompt
 ```
+
+Na High-Level API, `retrievalLimit` continua sendo o limite vetorial. `lexicalCandidateLimit` e `rerankerCandidateLimit` são opcionais. Assim é possível executar vetor 30 + lexical 30 → RRF 30 → reranker 5 → contexto 5. Sem os novos argumentos, o comportamento anterior é preservado.
+
+### Evidência e abstenção
+
+`AbstentionPolicy` responde se há evidência suficiente para entregar contexto. `HybridEvidencePolicy` é a implementação conservadora incluída. Ela não depende de um threshold global de distância: considera quantidade de candidatos, apoio lexical, termos nomeados e scores disponíveis. `RetrievalDiagnostics` registra `abstained`, `abstentionReason` e `abstentionSignals`.
+
+### Idioma lexical
+
+`textSearchConfiguration` escolhe a configuração full-text do PostgreSQL. O default permanece `portuguese`; use `english` para inglês ou `simple` para termos técnicos. O valor precisa ser um identificador seguro e uma configuração instalada no banco.
 
 O orçamento descarta chunks inteiros. Ele não corta uma fonte no meio silenciosamente.
 

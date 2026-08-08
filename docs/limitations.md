@@ -37,8 +37,7 @@ Em termos simples: o retrieval atual não é apenas "pegar os 5 vetores mais pr�
 ## Recursos ainda não implementados
 
 - OCR para PDFs escaneados e loaders para HTML, Markdown ou object storage;
-- busca híbrida entre full-text/BM25 e vetor;
-- reranking por cross-encoder, LLM ou serviço externo;
+- cross-encoder local executado dentro da aplicação e adapters de reranking além do Cohere;
 - embeddings Gemini;
 - streaming incremental nativo ainda não disponível para `OllamaLanguageModel` e `GeminiLanguageModel`;
 - filtros arbitrários de metadata;
@@ -49,7 +48,7 @@ Essas capacidades podem ser adicionadas pela aplicação atrás dos contratos ex
 
 ## Diferenças importantes
 
-`ReciprocalRankFusion` não é a mesma coisa que busca híbrida. RRF combina listas de resultados, por exemplo a busca feita com a pergunta original e buscas feitas com variações da pergunta. Busca híbrida, no sentido usado no roadmap, significa combinar busca vetorial com busca textual/lexical, como full-text PostgreSQL ou BM25.
+`ReciprocalRankFusion` não é a mesma coisa que busca híbrida. RRF é o mecanismo de combinação de listas; a busca híbrida disponível fornece a ele resultados vetoriais e lexicais. O mesmo mecanismo também combina buscas feitas com a pergunta original e suas variações.
 
 Os diagnósticos internos também não são a mesma coisa que observabilidade operacional completa. Hoje a engine mede tempos e decisões dentro de uma execução. Ainda faltam integração padronizada com logs PSR-3, métricas, tracing e painéis operacionais.
 

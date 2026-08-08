@@ -4,25 +4,61 @@ declare(strict_types=1);
 
 namespace Omegaalfa\ContextEngine\Retrieval;
 
-final readonly class HybridEvidencePolicy
+use Omegaalfa\ContextEngine\Contract\AbstentionPolicy;
+
+final readonly class HybridEvidencePolicy implements AbstentionPolicy
 {
     /**
      * Rejects only an isolated vector hit for a named term that is absent from
      * the retrieved content. Conceptual queries and multi-hit results remain untouched.
      *
      * @param list<VectorSearchResult> $results
+     * @return AbstentionDecision
+     */
+    public function evaluate(string $question, array $results): AbstentionDecision
+    {
+        if ($results === []) {
+            return new AbstentionDecision([], reason: 'no_candidates', signals: [
+                'candidateCount' => 0,
+                'lexicallySupportedCandidates' => 0,
+            ]);
+        }
+        $lexicalSupport = count(array_filter($results, self::hasLexicalSupport(...)));
+        if (count($results) !== 1 || $lexicalSupport > 0) {
+            return new AbstentionDecision($results, signals: [
+                'candidateCount' => count($results),
+                'lexicallySupportedCandidates' => $lexicalSupport,
+            ]);
+        }
+        $namedTerms = self::namedTerms($question);
+        if ($namedTerms === [] || array_any($namedTerms, static fn (string $term): bool => self::contains($results[0]->chunk->content, $term))) {
+            return new AbstentionDecision($results, signals: [
+                'candidateCount' => 1,
+                'lexicallySupportedCandidates' => 0,
+                'namedTerms' => implode(', ', $namedTerms),
+                'bestVectorDistance' => $results[0]->distance,
+                'bestFusionScore' => $results[0]->fusionScore,
+                'bestRerankerScore' => $results[0]->rerankerScore,
+            ]);
+        }
+        return new AbstentionDecision([], [$results[0]->chunk->id], 'isolated_vector_hit_without_named_term', [
+            'candidateCount' => 1,
+            'lexicallySupportedCandidates' => 0,
+            'namedTerms' => implode(', ', $namedTerms),
+            'bestVectorDistance' => $results[0]->distance,
+            'bestFusionScore' => $results[0]->fusionScore,
+            'bestRerankerScore' => $results[0]->rerankerScore,
+        ]);
+    }
+
+    /**
+     * @param list<VectorSearchResult> $results
      * @return array{selected:list<VectorSearchResult>, discarded:list<string>}
      */
     public function select(string $question, array $results): array
     {
-        if (count($results) !== 1 || self::hasLexicalSupport($results[0])) {
-            return ['selected' => $results, 'discarded' => []];
-        }
-        $namedTerms = self::namedTerms($question);
-        if ($namedTerms === [] || array_any($namedTerms, static fn (string $term): bool => self::contains($results[0]->chunk->content, $term))) {
-            return ['selected' => $results, 'discarded' => []];
-        }
-        return ['selected' => [], 'discarded' => [$results[0]->chunk->id]];
+        $decision = $this->evaluate($question, $results);
+        return ['selected' => $decision->selected, 'discarded' => $decision->discardedChunkIds];
     }
 
     private static function hasLexicalSupport(VectorSearchResult $result): bool

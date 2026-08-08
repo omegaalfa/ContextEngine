@@ -65,6 +65,9 @@ final class ContextEngineConfigFactory
                 'CONTEXT_ENGINE_NO_EVIDENCE_MESSAGE',
                 'Não encontrei evidências suficientes no contexto recuperado para responder a essa pergunta.',
             ),
+            lexicalCandidateLimit: self::nullableInteger('CONTEXT_ENGINE_LEXICAL_CANDIDATE_LIMIT'),
+            rerankerCandidateLimit: self::nullableInteger('CONTEXT_ENGINE_RERANKER_CANDIDATE_LIMIT'),
+            textSearchConfiguration: self::string('CONTEXT_ENGINE_TEXT_SEARCH_CONFIGURATION', 'portuguese'),
         );
     }
 

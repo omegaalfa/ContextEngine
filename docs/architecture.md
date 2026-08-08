@@ -199,11 +199,17 @@ QueryRewriter
    ↓
 Embedding da pergunta ou das variações
    ↓
-VectorSearchQuery por consulta
+Busca vetorial + busca lexical opcional
    ↓
-VectorStore::search()
+VectorStore::search() + PgVectorStore::searchLexical()
    ↓
 ReciprocalRankFusion + deduplicação
+   ↓
+Reranker opcional
+   ↓
+ContextRelevancePolicy opcional
+   ↓
+HybridEvidencePolicy opcional
    ↓
 NeighborExpansion opcional
    ↓
@@ -222,14 +228,16 @@ Answer
 2. `Retriever::retrieve()` ou `retrieveWithDiagnostics()` passa a pergunta pelo `QueryRewriter`. No modo simples, só existe a pergunta original. Com `HeuristicQueryRewriter`, a engine cria variações determinísticas para melhorar a chance de encontrar evidências.
 3. Para cada consulta planejada, o retriever chama `EmbeddingProvider::embed()` com conteúdo e tenant, criando `Embedding` no espaço do provider.
 4. O retriever cria `VectorSearchQuery` com tenant, embedding, `RetrievalPolicy`, collection opcional e status.
-5. `PgVectorStore::search()` converte a métrica pública para a métrica do QueryBuilder e monta nearest-neighbor search. Tenant, status, provider, model, dimensions, revision e fingerprint entram no SQL; collection também entra quando configurada.
-6. Os resultados das consultas são fundidos por `ReciprocalRankFusion`. Em linguagem simples, se o mesmo chunk aparece bem colocado em mais de uma busca, ele ganha força no ranking final.
-7. `NeighborExpansion`, quando configurada e suportada pelo store, inclui chunks próximos no mesmo documento e versão para completar o trecho.
-8. `AdaptiveContextSelector`, quando configurado, reduz ruído: pode manter só a melhor fonte quando ela é suficiente, preservar uma fonte complementar ou descartar duplicatas.
-9. `ContextSelector` aplica o orçamento final de quantidade de chunks e caracteres. Ele descarta chunks inteiros; não corta uma fonte no meio silenciosamente.
-10. `ContextPromptBuilder::build()` recebe `Question` e resultados finais. Ele cria duas `ChatMessage`: uma de sistema e uma de usuário com a pergunta e fontes claramente delimitadas, identificadas e tratadas como dados não confiáveis.
-11. `LanguageModel::complete()` recebe as mensagens e devolve texto. Se houver `CachedLanguageModel` habilitado, a consulta pode ser atendida pelo cache usando tenant, identidade de geração, mensagens e versão do prompt.
-12. A pipeline cria `Answer` com conteúdo e os mesmos `VectorSearchResult` usados como fontes.
+5. `PgVectorStore::search()` executa a busca vetorial. Quando a busca híbrida está habilitada, `PgVectorStore::searchLexical()` também procura correspondências textuais. Para quem está começando: a busca vetorial aproxima significados, enquanto a lexical valoriza palavras e identificadores presentes no texto.
+6. `ReciprocalRankFusion` combina os rankings vetorial e lexical. Um chunk bem colocado em mais de uma busca recebe mais força, sem apagar seus scores originais.
+7. Um `Reranker` opcional pode reorganizar os candidatos após o RRF. O pacote inclui `DeterministicTextualReranker` para experimentação e `CohereReranker` como cross-encoder remoto. O score do reranker é armazenado separadamente de distância, score lexical e score RRF. Falhas esperadas do provider são *fail-open*: o retrieval conserva a ordem do RRF e registra o ocorrido nos diagnósticos.
+8. `ContextRelevancePolicy`, quando configurada, reduz candidatos por relevância antes da decisão de evidência. A composição High-Level não usa essa policy baseada em distância no modo híbrido.
+9. A `AbstentionPolicy` decide se há evidência suficiente. `HybridEvidencePolicy` é a implementação padrão do modo híbrido. A decisão e seus sinais ficam nos diagnósticos.
+10. `NeighborExpansion`, quando configurada e suportada pelo store, inclui chunks próximos no mesmo documento e versão para completar o trecho.
+11. `ContextSelector` aplica o orçamento final de quantidade de chunks e caracteres. Ele descarta chunks inteiros; não corta uma fonte no meio silenciosamente.
+12. `ContextPromptBuilder::build()` recebe `Question` e resultados finais. Ele cria duas `ChatMessage`: uma de sistema e uma de usuário com a pergunta e fontes claramente delimitadas, identificadas e tratadas como dados não confiáveis.
+13. `LanguageModel::complete()` recebe as mensagens e devolve texto. Se houver `CachedLanguageModel` habilitado, a consulta pode ser atendida pelo cache usando tenant, identidade de geração, mensagens e versão do prompt.
+14. A pipeline cria `Answer` com conteúdo e os mesmos `VectorSearchResult` usados como fontes.
 
 Para depuração, `RetrievalDiagnostics` mostra consultas, hits, ranking fundido, vizinhos, descartes e tempos. `RagDiagnostics` acrescenta dados do prompt e do modelo. Isso é diagnóstico da execução; observabilidade externa com logs, métricas e tracing ainda pertence ao roadmap.
 
@@ -311,7 +319,7 @@ Tenant e collection participam porque `chunk_id` não é assumido global entre t
 
 ### Retrieval
 
-`RetrievalPolicy` define limite, `VectorMetric` e distância máxima opcional. A métrica pertence ao ContextEngine; o store a traduz para o enum do QueryBuilder. O SQL filtra tenant, status, `ingestion_state = active`, provider, model, dimensions, revision, fingerprint e collection quando definida. Assim, versões incompletas e vetores incompatíveis nem chegam à memória.
+`RetrievalPolicy` define limite vetorial, `VectorMetric` e distância máxima opcional. Limites opcionais separam candidatos lexicais, fused, reranker e contexto final. A métrica pertence ao ContextEngine; o store a traduz para o enum do QueryBuilder. O SQL filtra tenant, status, `ingestion_state = active`, provider, model, dimensions, revision, fingerprint e collection quando definida. Assim, versões incompletas e vetores incompatíveis nem chegam à memória.
 
 O schema de integração/desenvolvimento usa `vector(1024)` para o BGE-M3 via Ollama. Índices B-tree apoiam filtros de tenant/collection/status/espaço, enquanto o HNSW incluído atende à métrica cosseno. Outro modelo ou métrica pode exigir schema/índice correspondente; consulte [schema](database-schema.md) e [performance](performance.md).
 
@@ -435,8 +443,7 @@ Ainda não fazem parte do núcleo:
 
 - providers adicionais de embeddings e LLM, como embeddings Gemini e adapters Anthropic;
 - streaming SSE/chunked oficial nos providers atuais;
-- reranking lexical, neural ou cross-encoder;
-- busca híbrida lexical + vetorial, como full-text/BM25 + embeddings;
+- adapters adicionais de reranking e execução local de cross-encoders;
 - OCR e análise estrutural para PDF; loaders HTML, Markdown, bancos e object storage;
 - splitters baseados em tokens, semântica ou estrutura de código;
 - filtros arbitrários de metadata além do escopo atual;

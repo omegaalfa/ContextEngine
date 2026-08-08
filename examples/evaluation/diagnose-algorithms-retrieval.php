@@ -127,7 +127,7 @@ foreach ($golden['dataset'] as $case) {
     }
     $bestDistance = best_distance($diagnostics);
     if ($bestDistance !== null) {
-        if ($case->expectNoEvidence) {
+        if ($case->expectNoEvidence || $case->relevantChunkIds === []) {
             $negativeBest[] = $bestDistance;
         } else {
             $positiveBest[] = $bestDistance;
@@ -234,6 +234,9 @@ function best_distance(RetrievalDiagnostics $diagnostics): ?float
 /** @param list<string> $retrieved @param list<string> $expected */
 function recall(array $retrieved, array $expected): float
 {
+    if ($expected === []) {
+        return 0.0;
+    }
     return count(array_intersect(array_unique($retrieved), array_unique($expected))) / count(array_unique($expected));
 }
 

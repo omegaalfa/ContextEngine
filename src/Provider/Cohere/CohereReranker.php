@@ -38,11 +38,20 @@ final readonly class CohereReranker implements IdentifiedReranker
         $this->http = new JsonClient($client->withBearerToken($apiKey)->withTimeout($timeoutSeconds));
     }
 
-    public function name(): string { return 'CohereReranker'; }
+    public function name(): string
+    {
+        return 'CohereReranker';
+    }
 
-    public function provider(): string { return 'cohere'; }
+    public function provider(): string
+    {
+        return 'cohere';
+    }
 
-    public function model(): string { return $this->model; }
+    public function model(): string
+    {
+        return $this->model;
+    }
 
     public function rerank(Question $question, array $results): array
     {

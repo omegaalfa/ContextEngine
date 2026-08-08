@@ -186,6 +186,7 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
      */
     public function searchLexical(LexicalSearchQuery $query): array
     {
+        $textSearchConfiguration = $query->textSearchConfiguration;
         $fields = [
             $this->schema->chunkId,
             $this->schema->documentId,
@@ -208,7 +209,7 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
             $this->schema->tenantId . ' = ?',
             $this->schema->status . ' = ?',
             $this->schema->ingestionState . ' = ?',
-            $this->schema->searchVector . " @@ websearch_to_tsquery('portuguese', ?)",
+            $this->schema->searchVector . " @@ websearch_to_tsquery('{$textSearchConfiguration}', ?)",
         ];
         $rankTerms = $query->terms;
         $params = [
@@ -230,7 +231,7 @@ final readonly class PgVectorStore implements VersionedVectorStore, NeighborAwar
         $params[] = $query->policy->limit;
 
         $sql = sprintf(
-            "SELECT %s, ts_rank_cd(%s, websearch_to_tsquery('portuguese', ?)) AS ts_rank FROM %s WHERE %s ORDER BY ts_rank DESC, %s ASC LIMIT ?",
+            "SELECT %s, ts_rank_cd(%s, websearch_to_tsquery('{$textSearchConfiguration}', ?)) AS ts_rank FROM %s WHERE %s ORDER BY ts_rank DESC, %s ASC LIMIT ?",
             $select,
             $this->schema->searchVector,
             $this->schema->table,

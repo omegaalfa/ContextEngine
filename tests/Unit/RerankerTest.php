@@ -13,8 +13,8 @@ use Omegaalfa\ContextEngine\Embedding\EmbeddedChunk;
 use Omegaalfa\ContextEngine\Embedding\Embedding;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingBatchRequest;
 use Omegaalfa\ContextEngine\Embedding\EmbeddingSpace;
-use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Exception\RerankerException;
+use Omegaalfa\ContextEngine\Rag\Question;
 use Omegaalfa\ContextEngine\Retrieval\DeterministicTextualReranker;
 use Omegaalfa\ContextEngine\Retrieval\Retriever;
 use Omegaalfa\ContextEngine\Retrieval\VectorSearchQuery;
@@ -64,7 +64,10 @@ final class RerankerTest extends TestCase
     public function testRetrieverRejectsRerankerThatDropsCandidates(): void
     {
         $reranker = new class () implements Reranker {
-            public function rerank(Question $question, array $results): array { return array_slice($results, 0, 1); }
+            public function rerank(Question $question, array $results): array
+            {
+                return array_slice($results, 0, 1);
+            }
         };
         $retriever = $this->retriever([
             $this->searchResult('one', 'Um.', 0.1),
@@ -96,24 +99,102 @@ final class RerankerTest extends TestCase
         self::assertSame('Remote reranker failed.', $outcome->diagnostics->rerankerError);
     }
 
+    public function testRerankerCandidateLimitIsIndependentFromFinalContextLimit(): void
+    {
+        $counter = new \stdClass();
+        $counter->seen = 0;
+        $reranker = new class ($counter) implements Reranker {
+            public function __construct(private readonly \stdClass $counter) {}
+            public function rerank(Question $question, array $results): array
+            {
+                $this->counter->seen = count($results);
+                return $results;
+            }
+        };
+        $space = new EmbeddingSpace('test', 'fixed', 1);
+        $embedding = new class ($space) implements EmbeddingProvider {
+            public function __construct(private readonly EmbeddingSpace $space) {}
+            public function space(): EmbeddingSpace
+            {
+                return $this->space;
+            }
+            public function embed(string $text, string $tenantId): Embedding
+            {
+                return new Embedding([1.0], $this->space);
+            }
+            public function embedBatch(EmbeddingBatchRequest $request): array
+            {
+                return [];
+            }
+        };
+        $results = array_map(fn (int $id): VectorSearchResult => $this->searchResult((string) $id, 'conteúdo', $id / 10), range(1, 5));
+        $store = new class ($results) implements VectorStore {
+            public function __construct(private readonly array $results) {}
+            public function storeBatch(array $chunks): void {}
+            public function search(VectorSearchQuery $query): array
+            {
+                return $this->results;
+            }
+            public function deleteChunk(ChunkDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function deleteDocument(DocumentDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function clearCollection(CollectionDeleteQuery $query): int
+            {
+                return 0;
+            }
+        };
+        $outcome = new Retriever($embedding, $store, contextChunkLimit: 2, reranker: $reranker, rerankerCandidateLimit: 4)
+            ->retrieveWithDiagnostics(new Question('Pergunta', 'tenant'));
+
+        self::assertSame(4, $counter->seen);
+        self::assertCount(2, $outcome->results);
+        self::assertSame(4, $outcome->diagnostics->rerankerCandidateCount);
+    }
+
     /** @param list<VectorSearchResult> $results */
     private function retriever(array $results, Reranker $reranker): Retriever
     {
         $space = new EmbeddingSpace('test', 'fixed', 1);
         $embedding = new class ($space) implements EmbeddingProvider {
             public function __construct(private readonly EmbeddingSpace $space) {}
-            public function space(): EmbeddingSpace { return $this->space; }
-            public function embed(string $text, string $tenantId): Embedding { return new Embedding([1.0], $this->space); }
-            public function embedBatch(EmbeddingBatchRequest $request): array { return []; }
+            public function space(): EmbeddingSpace
+            {
+                return $this->space;
+            }
+            public function embed(string $text, string $tenantId): Embedding
+            {
+                return new Embedding([1.0], $this->space);
+            }
+            public function embedBatch(EmbeddingBatchRequest $request): array
+            {
+                return [];
+            }
         };
         $store = new class ($results) implements VectorStore {
             public function __construct(private readonly array $results) {}
             /** @param list<EmbeddedChunk> $chunks */
             public function storeBatch(array $chunks): void {}
-            public function search(VectorSearchQuery $query): array { return $this->results; }
-            public function deleteChunk(ChunkDeleteQuery $query): int { return 0; }
-            public function deleteDocument(DocumentDeleteQuery $query): int { return 0; }
-            public function clearCollection(CollectionDeleteQuery $query): int { return 0; }
+            public function search(VectorSearchQuery $query): array
+            {
+                return $this->results;
+            }
+            public function deleteChunk(ChunkDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function deleteDocument(DocumentDeleteQuery $query): int
+            {
+                return 0;
+            }
+            public function clearCollection(CollectionDeleteQuery $query): int
+            {
+                return 0;
+            }
         };
         return new Retriever($embedding, $store, reranker: $reranker);
     }

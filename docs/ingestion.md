@@ -1,5 +1,8 @@
 # Ingestão
 
+> [!NOTE]
+> `TokenLimitStrategy` usa estimativa heurística, não o tokenizer exato do provider. O default aproxima um token a cada quatro caracteres; `HeuristicTokenEstimator` permite configurar esse fator.
+
 ```text
 DocumentLoader → TextSplitter → Chunk → Batcher
 → BatchEmbeddingExecutor → EmbeddingProvider
